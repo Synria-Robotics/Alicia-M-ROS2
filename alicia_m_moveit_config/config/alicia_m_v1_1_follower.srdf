@@ -40,10 +40,30 @@
     <disable_collisions link1="base_link" link2="link1" reason="Adjacent"/>
     <disable_collisions link1="base_link" link2="link2" reason="Never"/>
     <disable_collisions link1="base_link" link2="link3" reason="Never"/>
+    <!-- 1 -->
+    <!-- <disable_collisions link1="base_link" link2="link4" reason="Never"/>
+    <disable_collisions link1="base_link" link2="link5" reason="Never"/>
+    <disable_collisions link1="base_link" link2="link6" reason="Never"/>
+    <disable_collisions link1="base_link" link2="link7" reason="Never"/>
+    <disable_collisions link1="base_link" link2="link8" reason="Never"/> -->
+    <!-- 1 -->
     <disable_collisions link1="link1" link2="link2" reason="Adjacent"/>
     <disable_collisions link1="link1" link2="link3" reason="Never"/>
+    <!-- 2 -->
+    <!-- <disable_collisions link1="link1" link2="link4" reason="Never"/>
+    <disable_collisions link1="link1" link2="link5" reason="Never"/>
+    <disable_collisions link1="link1" link2="link6" reason="Never"/>
+    <disable_collisions link1="link1" link2="link7" reason="Never"/>
+    <disable_collisions link1="link1" link2="link8" reason="Never"/> -->
+    <!-- 2 -->
     <disable_collisions link1="link2" link2="link3" reason="Adjacent"/>
     <disable_collisions link1="link2" link2="link4" reason="Never"/>
+    <!-- 3 -->
+    <!-- <disable_collisions link1="link2" link2="link5" reason="Never"/>
+    <disable_collisions link1="link2" link2="link6" reason="Never"/>
+    <disable_collisions link1="link2" link2="link7" reason="Never"/>
+    <disable_collisions link1="link2" link2="link8" reason="Never"/> -->
+    <!-- 3 -->
     <disable_collisions link1="link3" link2="link4" reason="Adjacent"/>
     <disable_collisions link1="link3" link2="link5" reason="Never"/>
     <disable_collisions link1="link3" link2="link6" reason="Never"/>
