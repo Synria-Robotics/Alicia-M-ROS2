@@ -13,6 +13,7 @@
 - 机械臂模型显示与 RViz 可视化
 - 手眼标定（眼在手上，适配intel realsense d405）与标定结果验证
 - Python 脚本示例（如 Pick and Place）
+- (待开发)物块分拣工作流（2D抓取）
 - (待开发)基于 GraspGen（NVIDIA 2025）的 6D 抓取工作流。
 
 ## 项目结构
