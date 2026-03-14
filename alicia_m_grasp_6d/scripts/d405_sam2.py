@@ -20,8 +20,10 @@ Controls:
 import os
 import sys
 
-# Suppress Qt font warnings
-os.environ.setdefault('QT_QPA_FONTDIR', '/usr/share/fonts')
+# Suppress Qt font warnings before importing cv2
+os.environ['QT_QPA_FONTDIR'] = '/usr/share/fonts'
+os.environ['QT_LOGGING_RULES'] = '*.debug=false;qt.qpa.*=false'
+
 import argparse
 import time
 import threading

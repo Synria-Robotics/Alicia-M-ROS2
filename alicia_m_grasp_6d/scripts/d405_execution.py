@@ -82,13 +82,13 @@ class GraspExecutionNode(Node):
     
     # Gripper configuration - Alicia-M uses GripperCommand
     # Alicia-M: 0.0 = open, -0.05 = closed
-    GRIPPER_DEPTH = 0.06  # Distance from tool0 to fingertip (m) - adjust as needed
+    GRIPPER_DEPTH = 0.12  # Distance from tool0 to fingertip (m) - adjust as needed
     GRIPPER_OPEN = 0.0    # Gripper open position
     GRIPPER_CLOSED = -0.05  # Gripper closed position
     
     # Movement parameters
     PRE_GRASP_DISTANCE = 0.08  # Pre-grasp approach distance (m)
-    LIFT_HEIGHT = 0.0  # Lift height after grasp (m)
+    LIFT_HEIGHT = 0.05  # Lift height after grasp (m)
     
     # Frame configuration - must match what grasp_generation.py uses
     # Point cloud and grasp poses are in the depth camera's optical frame
@@ -798,7 +798,7 @@ class GraspExecutionNode(Node):
         
         self.get_logger().info("Step 4: Closing gripper...")
         self.close_gripper()
-        time.sleep(1.0)
+        time.sleep(3.0)
         
         lift_pose = self.compute_lift_pose(grasp_pose)
         self.get_logger().info("Step 5: Lifting object...")

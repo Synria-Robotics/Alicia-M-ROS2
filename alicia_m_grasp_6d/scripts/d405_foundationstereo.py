@@ -25,6 +25,10 @@ Usage:
 
 import os
 import sys
+
+# Suppress Qt font warnings before importing cv2
+os.environ['QT_QPA_FONTDIR'] = '/usr/share/fonts'
+os.environ['QT_LOGGING_RULES'] = '*.debug=false;qt.qpa.*=false'
 import argparse
 import time
 import threading
@@ -627,18 +631,8 @@ class FoundationStereoNode:
     
     def visualize_frame(self, left_img: np.ndarray, disp: np.ndarray, 
                        xyz_map: np.ndarray, depth: np.ndarray, colors: np.ndarray):
-        """Visualize disparity and colored point cloud using Open3D."""
+        """Visualize colored point cloud using Open3D (no cv2 window)."""
         import open3d as o3d
-        
-        # Handle grayscale images
-        if left_img.ndim == 2:
-            left_img = cv2.cvtColor(left_img, cv2.COLOR_GRAY2RGB)
-        
-        # Create visualization
-        disp_vis = vis_disparity(disp)
-        combined = np.concatenate([left_img, disp_vis], axis=1)
-        
-        cv2.imshow('Left Image | Disparity', cv2.cvtColor(combined, cv2.COLOR_RGB2BGR))
         
         # Create Open3D point cloud with RGB colors
         H, W = xyz_map.shape[:2]
@@ -656,14 +650,11 @@ class FoundationStereoNode:
                                                radius=self.args.denoise_radius)
         
         # Visualize with error handling for Wayland/display issues
-        logging.info("Visualizing colored point cloud. Press ESC or Q to close.")
+        logging.info("Visualizing colored point cloud. To continue, press ESC or Q to close.")
         try:
             vis = o3d.visualization.Visualizer()
             if not vis.create_window('Colored Point Cloud (D405)', width=800, height=600):
                 logging.warning("Failed to create Open3D window, skipping 3D visualization")
-                logging.info("Press any key in the disparity window to continue...")
-                cv2.waitKey(0)
-                cv2.destroyAllWindows()
                 return
             
             vis.add_geometry(pcd)
@@ -678,10 +669,6 @@ class FoundationStereoNode:
             vis.destroy_window()
         except Exception as e:
             logging.warning(f"Open3D visualization failed: {e}")
-            logging.info("Press any key in the disparity window to continue...")
-            cv2.waitKey(0)
-        
-        cv2.destroyAllWindows()
     
     def _read_regen_file_timestamp(self) -> float:
         """Read the current regenerate file timestamp (for initialization)."""
@@ -871,7 +858,6 @@ class FoundationStereoNode:
                 if first_run and self.args.visualize:
                     logging.info("")
                     logging.info("Opening point cloud visualization...")
-                    logging.info("Close the visualization window to continue.")
                     self.visualize_frame(left_img, disp, xyz_map, depth, colors)
                     logging.info("Visualization closed.")
                 
