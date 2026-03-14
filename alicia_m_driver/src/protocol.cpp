@@ -75,6 +75,21 @@ uint16_t speed_to_hw(double speed_rad_s)
   return float_to_uint(speed_rad_s, SPEED_MIN, SPEED_MAX, SPEED_BITS);
 }
 
+uint16_t torque_to_hw(double torque_nm)
+{
+  return float_to_uint(torque_nm, TORQUE_MIN, TORQUE_MAX, TORQUE_BITS);
+}
+
+uint16_t kp_to_hw(double kp)
+{
+  return float_to_uint(kp, KP_MIN, KP_MAX, KP_BITS);
+}
+
+uint16_t kd_to_hw(double kd)
+{
+  return float_to_uint(kd, KD_MIN, KD_MAX, KD_BITS);
+}
+
 // ======================== 帧校验辅助 ========================
 
 // 向帧末尾追加校验位和帧尾，帧的 [1..-2) 区间用于计算校验
@@ -135,6 +150,97 @@ std::vector<uint8_t> build_pv_control_frame(
   frame[offset++] = (gripper_hw >> 8) & 0xFF;
   frame[offset++] = gripper_speed_hw & 0xFF;
   frame[offset++] = (gripper_speed_hw >> 8) & 0xFF;
+
+  finalize_frame(frame);
+  return frame;
+}
+
+std::vector<uint8_t> build_mit_init_frame(
+  const double positions[NUM_JOINTS],
+  uint16_t gripper_hw,
+  double kp, double kd,
+  uint8_t aim)
+{
+  // MIT 初始化: 每电机 10 字节 (pos:2B + speed:2B + torque:2B + kp:2B + kd:2B)
+  // 前缀 2 字节: [0x00(起始addr=位置), 0x05(偏移数量=5个参数)]
+  // 与 SDK MIT_INIT_COMMAND 等效，用于配置 MIT PID 参数并进入 MIT 控制状态
+  constexpr size_t PREFIX_LEN = 2;
+  constexpr size_t BYTES_PER_MOTOR = 10;
+  constexpr size_t MOTOR_DATA_LEN = NUM_MOTORS * BYTES_PER_MOTOR;  // 7 * 10 = 70
+  constexpr size_t DATA_LEN = PREFIX_LEN + MOTOR_DATA_LEN;         // 72 = 0x48
+  constexpr size_t FRAME_SIZE = FRAME_OVERHEAD + DATA_LEN;
+
+  std::vector<uint8_t> frame(FRAME_SIZE, 0);
+  frame[0] = FRAME_HEADER;
+  frame[1] = CMD_JOINT;
+  frame[2] = FUNC_WRITE_BIT | aim;
+  frame[3] = static_cast<uint8_t>(DATA_LEN);
+  frame[4] = 0x00;  // 起始地址: 位置
+  frame[5] = 0x05;  // 偏移数量: pos+speed+torque+kp+kd
+
+  uint16_t speed_center = speed_to_hw(0.0);
+  uint16_t torque_center = torque_to_hw(0.0);
+  uint16_t kp_hw_val = kp_to_hw(kp);
+  uint16_t kd_hw_val = kd_to_hw(kd);
+
+  size_t offset = 6;
+  for (size_t i = 0; i < NUM_MOTORS; ++i) {
+    uint16_t pos_hw;
+    if (i < NUM_JOINTS) {
+      pos_hw = rad_to_hw(positions[i]);
+    } else {
+      pos_hw = gripper_hw;
+    }
+    frame[offset++] = pos_hw & 0xFF;
+    frame[offset++] = (pos_hw >> 8) & 0xFF;
+
+    frame[offset++] = speed_center & 0xFF;
+    frame[offset++] = (speed_center >> 8) & 0xFF;
+
+    frame[offset++] = torque_center & 0xFF;
+    frame[offset++] = (torque_center >> 8) & 0xFF;
+
+    frame[offset++] = kp_hw_val & 0xFF;
+    frame[offset++] = (kp_hw_val >> 8) & 0xFF;
+    frame[offset++] = kd_hw_val & 0xFF;
+    frame[offset++] = (kd_hw_val >> 8) & 0xFF;
+  }
+
+  finalize_frame(frame);
+  return frame;
+}
+
+std::vector<uint8_t> build_mit_control_frame(
+  const double positions[NUM_JOINTS],
+  uint16_t gripper_hw,
+  uint8_t aim)
+{
+  // MIT 位置控制: 每电机 2 字节 (仅位置), 7 个电机 = 14 字节
+  // 前缀 2 字节: [0x00(起始addr=位置), 0x01(偏移数量=1)]
+  // 对应 SDK PATTERN_MIT_POSITION = (0x00, 0x01)
+  constexpr size_t PREFIX_LEN = 2;
+  constexpr size_t MOTOR_DATA_LEN = NUM_MOTORS * 2;  // 7 * 2 = 14
+  constexpr size_t DATA_LEN = PREFIX_LEN + MOTOR_DATA_LEN;
+  constexpr size_t FRAME_SIZE = FRAME_OVERHEAD + DATA_LEN;
+
+  std::vector<uint8_t> frame(FRAME_SIZE, 0);
+  frame[0] = FRAME_HEADER;
+  frame[1] = CMD_JOINT;
+  frame[2] = FUNC_WRITE_BIT | aim;
+  frame[3] = static_cast<uint8_t>(DATA_LEN);
+  frame[4] = 0x00;  // 起始地址: 位置
+  frame[5] = 0x01;  // 偏移数量: 仅位置
+
+  size_t offset = 6;
+  for (size_t i = 0; i < NUM_JOINTS; ++i) {
+    uint16_t pos_hw = rad_to_hw(positions[i]);
+    frame[offset++] = pos_hw & 0xFF;
+    frame[offset++] = (pos_hw >> 8) & 0xFF;
+  }
+
+  // 夹爪
+  frame[offset++] = gripper_hw & 0xFF;
+  frame[offset++] = (gripper_hw >> 8) & 0xFF;
 
   finalize_frame(frame);
   return frame;

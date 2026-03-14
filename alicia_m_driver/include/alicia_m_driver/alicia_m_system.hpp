@@ -79,6 +79,10 @@ private:
   // 默认速度 (rad/s)
   double default_speed_;
 
+  // MIT 模式 PID 参数
+  double mit_kp_;  // 位置环比例增益 [0, 500]
+  double mit_kd_;  // 速度环阻尼增益 [0, 5]
+
   // 速度估算用的上一周期位置缓存
   std::vector<double> prev_hw_positions_;
   double prev_gripper_position_;

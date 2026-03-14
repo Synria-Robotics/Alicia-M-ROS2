@@ -46,6 +46,24 @@ constexpr double SPEED_MIN = -10.0;  // rad/s
 constexpr double SPEED_MAX =  10.0;  // rad/s
 constexpr int    SPEED_BITS = 12;    // 12-bit -> [0, 4095]
 
+constexpr double TORQUE_MIN = -12.0;  // N·m
+constexpr double TORQUE_MAX =  12.0;  // N·m
+constexpr int    TORQUE_BITS = 12;    // 12-bit -> [0, 4095]
+
+constexpr double KP_MIN = 0.0;
+constexpr double KP_MAX = 500.0;
+constexpr int    KP_BITS = 16;    // 16-bit -> [0, 65535]
+
+constexpr double KD_MIN = 0.0;
+constexpr double KD_MAX = 5.0;
+constexpr int    KD_BITS = 16;    // 16-bit -> [0, 65535]
+
+// MIT 模式默认 PID 参数 (与 SDK 一致)
+constexpr double MIT_KP_LARGE = 50.0;   // 关节 1-3
+constexpr double MIT_KD_LARGE = 2.0;
+constexpr double MIT_KP_SMALL = 20.0;   // 关节 4-6 + 夹爪
+constexpr double MIT_KD_SMALL = 1.0;
+
 constexpr size_t NUM_JOINTS = 6;
 constexpr size_t NUM_MOTORS = 7;  // 6 关节 + 1 夹爪
 
@@ -80,6 +98,15 @@ double hw_to_rad(uint16_t hw);
 /// 速度(rad/s) -> 12-bit 硬件值
 uint16_t speed_to_hw(double speed_rad_s);
 
+/// 扭矩(N·m) -> 12-bit 硬件值
+uint16_t torque_to_hw(double torque_nm);
+
+/// Kp -> 16-bit 硬件值
+uint16_t kp_to_hw(double kp);
+
+/// Kd -> 16-bit 硬件值
+uint16_t kd_to_hw(double kd);
+
 // ======================== 帧构建函数 ========================
 
 /// 构建查询关节数据帧 (CMD 0x06, 读取操作臂位置)
@@ -93,6 +120,21 @@ std::vector<uint8_t> build_pv_control_frame(
   const double speeds[NUM_JOINTS],
   uint16_t gripper_hw,
   uint16_t gripper_speed_hw,
+  uint8_t aim = AIM_OPERATION);
+
+/// 构建 MIT 模式初始化帧 (CMD 0x06, 写入 pos+speed+torque+kp+kd)
+/// 设置 MIT PID 参数并将电机切入 MIT 控制状态 (与 SDK MIT_INIT_COMMAND 等效)
+/// kp: 位置环比例增益 [0, 500], kd: 速度环阻尼增益 [0, 5]
+std::vector<uint8_t> build_mit_init_frame(
+  const double positions[NUM_JOINTS],
+  uint16_t gripper_hw,
+  double kp, double kd,
+  uint8_t aim = AIM_OPERATION);
+
+/// 构建 MIT 模式控制帧 (CMD 0x06, 仅写入位置, 每电机 2 字节)
+std::vector<uint8_t> build_mit_control_frame(
+  const double positions[NUM_JOINTS],
+  uint16_t gripper_hw,
   uint8_t aim = AIM_OPERATION);
 
 /// 构建电机模式切换帧 (CMD 0x11, addr 0x0B)

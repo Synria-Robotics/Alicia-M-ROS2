@@ -1,29 +1,16 @@
 """
-moveit_hardware.launch.py - MoveIt2 + 真实硬件同时启动
-
-启动内容:
-  - robot_state_publisher (加载带真实硬件插件的 URDF)
-  - ros2_control controller_manager + 控制器
-  - static_transform_publisher (virtual_joint: world -> base_link)
-  - move_group (MoveIt2 运动规划)
-  - rviz2 (MoveIt2 可视化)
-
-参数:
-  - serial_port: 串口设备路径 (默认 /dev/ttyACM0)
-  - control_mode: 控制模式 pv 或 mit (默认 pv)
-  - baudrate: 波特率 (默认 1000000)
-  - use_rviz: 是否启动 RViz (默认 true)
+moveit_hardware.launch.py - MoveIt2 + 真实硬件
 
 用法:
   ros2 launch alicia_m_bringup moveit_hardware.launch.py
-  ros2 launch alicia_m_bringup moveit_hardware.launch.py serial_port:=/dev/ttyUSB0
-  ros2 launch alicia_m_bringup moveit_hardware.launch.py control_mode:=mit use_rviz:=false
+  ros2 launch alicia_m_bringup moveit_hardware.launch.py serial_port:=/dev/ttyACM1
+  ros2 launch alicia_m_bringup moveit_hardware.launch.py control_mode:=mit mit_kp:=30.0 mit_kd:=1.5
 """
 
 import os
 import yaml
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, TimerAction
+from launch.actions import DeclareLaunchArgument, OpaqueFunction, TimerAction
 from launch.conditions import IfCondition
 from launch.substitutions import (
     Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
@@ -35,45 +22,68 @@ from ament_index_python.packages import get_package_share_directory
 
 
 def load_yaml(package_name, file_path):
-    """从包中加载 YAML 文件"""
     full_path = os.path.join(
         get_package_share_directory(package_name), file_path)
     with open(full_path, 'r') as f:
         return yaml.safe_load(f)
 
 
+def _print_launch_config(context):
+    port = LaunchConfiguration('serial_port').perform(context)
+    mode = LaunchConfiguration('control_mode').perform(context)
+    baud = LaunchConfiguration('baudrate').perform(context)
+    speed = LaunchConfiguration('default_speed').perform(context)
+
+    print(f'\033[1;34m[INFO] Serial port: {port}\033[0m')
+    print(f'\033[1;34m[INFO] Control mode: {mode}\033[0m')
+    print(f'\033[1;34m[INFO] Baudrate: {baud}\033[0m')
+    print(f'\033[1;34m[INFO] Default speed: {speed} rad/s\033[0m')
+    if mode == 'mit':
+        kp = LaunchConfiguration('mit_kp').perform(context)
+        kd = LaunchConfiguration('mit_kd').perform(context)
+        print(f'\033[1;34m[INFO] MIT Kp={kp}, Kd={kd}\033[0m')
+    return []
+
+
 def generate_launch_description():
-    # ======================== 启动参数 ========================
     declared_args = [
         DeclareLaunchArgument(
             'serial_port', default_value='/dev/ttyACM0',
-            description='串口设备路径'),
+            choices=['/dev/ttyACM0', '/dev/ttyACM1', '/dev/ttyACM2', '/dev/ttyACM3'],
+            description='Serial port'),
         DeclareLaunchArgument(
             'control_mode', default_value='pv',
-            description='控制模式: pv 或 mit'),
+            description='Control mode: pv or mit'),
         DeclareLaunchArgument(
             'baudrate', default_value='1000000',
-            description='串口波特率'),
+            description='Serial baudrate'),
         DeclareLaunchArgument(
             'default_speed', default_value='1.0',
-            description='默认关节速度 (rad/s)'),
+            description='Default joint speed (rad/s)'),
+        DeclareLaunchArgument(
+            'mit_kp', default_value='50.0',
+            description='MIT mode Kp (0-500)'),
+        DeclareLaunchArgument(
+            'mit_kd', default_value='2.0',
+            description='MIT mode Kd (0-5)'),
         DeclareLaunchArgument(
             'use_rviz', default_value='true',
-            description='是否启动 RViz'),
+            description='Launch RViz'),
     ]
 
     serial_port = LaunchConfiguration('serial_port')
     control_mode = LaunchConfiguration('control_mode')
     baudrate = LaunchConfiguration('baudrate')
     default_speed = LaunchConfiguration('default_speed')
+    mit_kp = LaunchConfiguration('mit_kp')
+    mit_kd = LaunchConfiguration('mit_kd')
     use_rviz = LaunchConfiguration('use_rviz')
 
-    # ======================== 包路径 ========================
     moveit_config_pkg = 'alicia_m_moveit_config'
     moveit_config_share = FindPackageShare(moveit_config_pkg)
     bringup_share = FindPackageShare('alicia_m_bringup')
 
-    # ======================== URDF (真实硬件插件) ========================
+    # URDF with real hardware plugin
     robot_description_content = Command([
         FindExecutable(name='xacro'), ' ',
         PathJoinSubstitution([
@@ -85,12 +95,13 @@ def generate_launch_description():
         ' baudrate:=', baudrate,
         ' control_mode:=', control_mode,
         ' default_speed:=', default_speed,
+        ' mit_kp:=', mit_kp,
+        ' mit_kd:=', mit_kd,
     ])
     robot_description = {
         'robot_description': ParameterValue(robot_description_content, value_type=str)
     }
 
-    # ======================== MoveIt2 配置 ========================
     robot_description_semantic_content = Command([
         FindExecutable(name='xacro'), ' ',
         PathJoinSubstitution([
@@ -145,17 +156,16 @@ def generate_launch_description():
         'publish_transforms_updates': True,
     }
 
-    # ======================== 控制器配置 ========================
     controllers_yaml = PathJoinSubstitution([
         bringup_share, 'config', 'ros2_controllers.yaml'
     ])
 
-    # ======================== 节点 ========================
     robot_state_publisher_node = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
-        output='both',
+        output='log',
         parameters=[robot_description],
+        arguments=['--ros-args', '--log-level', 'warn'],
     )
 
     control_node = Node(
@@ -165,15 +175,18 @@ def generate_launch_description():
         output='both',
     )
 
-    # 虚拟关节 TF (world -> base_link)
     static_tf_node = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
-        arguments=['0', '0', '0', '0', '0', '0', 'world', 'base_link'],
-        output='screen',
+        arguments=[
+            '--x', '0', '--y', '0', '--z', '0',
+            '--roll', '0', '--pitch', '0', '--yaw', '0',
+            '--frame-id', 'world', '--child-frame-id', 'base_link',
+            '--ros-args', '--log-level', 'warn',
+        ],
+        output='log',
     )
 
-    # MoveIt2 move_group
     move_group_node = Node(
         package='moveit_ros_move_group',
         executable='move_group',
@@ -191,14 +204,13 @@ def generate_launch_description():
         ],
     )
 
-    # RViz
     rviz_config_file = PathJoinSubstitution([
         moveit_config_share, 'config', 'moveit.rviz'
     ])
     rviz_node = Node(
         package='rviz2',
         executable='rviz2',
-        arguments=['-d', rviz_config_file],
+        arguments=['-d', rviz_config_file, '--ros-args', '--log-level', 'warn'],
         parameters=[
             robot_description,
             robot_description_semantic,
@@ -206,11 +218,10 @@ def generate_launch_description():
             planning_pipeline_config,
             joint_limits_yaml,
         ],
-        output='screen',
+        output='log',
         condition=IfCondition(use_rviz),
     )
 
-    # 延迟启动控制器
     joint_state_broadcaster_spawner = Node(
         package='controller_manager',
         executable='spawner',
@@ -241,6 +252,7 @@ def generate_launch_description():
 
     return LaunchDescription(
         declared_args + [
+            OpaqueFunction(function=_print_launch_config),
             robot_state_publisher_node,
             control_node,
             static_tf_node,

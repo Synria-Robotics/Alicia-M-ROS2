@@ -1,24 +1,14 @@
 """
-moveit_sim.launch.py - 仅启动 MoveIt2 RViz 仿真（无真实硬件）
+moveit_sim.launch.py - MoveIt2 simulation (no real hardware)
 
-使用 mock_components/GenericSystem 作为虚拟硬件，
-可在无机械臂的情况下进行运动规划测试和可视化。
-
-启动内容:
-  - robot_state_publisher (加载带 mock 硬件插件的 URDF)
-  - ros2_control controller_manager (mock 硬件)
-  - static_transform_publisher (virtual_joint: world -> base_link)
-  - move_group (MoveIt2 运动规划)
-  - rviz2 (MoveIt2 可视化)
-
-用法:
+Usage:
   ros2 launch alicia_m_bringup moveit_sim.launch.py
 """
 
 import os
 import yaml
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, TimerAction
+from launch.actions import DeclareLaunchArgument, OpaqueFunction, TimerAction
 from launch.conditions import IfCondition
 from launch.substitutions import (
     Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
@@ -30,29 +20,30 @@ from ament_index_python.packages import get_package_share_directory
 
 
 def load_yaml(package_name, file_path):
-    """从包中加载 YAML 文件"""
     full_path = os.path.join(
         get_package_share_directory(package_name), file_path)
     with open(full_path, 'r') as f:
         return yaml.safe_load(f)
 
 
+def _print_launch_info(context):
+    print('\033[1;34m[INFO] Simulation mode: using mock hardware (GenericSystem)\033[0m')
+    return []
+
+
 def generate_launch_description():
-    # ======================== 启动参数 ========================
     declared_args = [
         DeclareLaunchArgument(
             'use_rviz', default_value='true',
-            description='是否启动 RViz'),
+            description='Launch RViz'),
     ]
 
     use_rviz = LaunchConfiguration('use_rviz')
 
-    # ======================== 包路径 ========================
     moveit_config_pkg = 'alicia_m_moveit_config'
     moveit_config_share = FindPackageShare(moveit_config_pkg)
     bringup_share = FindPackageShare('alicia_m_bringup')
 
-    # ======================== URDF (Mock 硬件) ========================
     robot_description_content = Command([
         FindExecutable(name='xacro'), ' ',
         PathJoinSubstitution([
@@ -65,7 +56,6 @@ def generate_launch_description():
         'robot_description': ParameterValue(robot_description_content, value_type=str)
     }
 
-    # ======================== MoveIt2 配置 ========================
     robot_description_semantic_content = Command([
         FindExecutable(name='xacro'), ' ',
         PathJoinSubstitution([
@@ -120,17 +110,16 @@ def generate_launch_description():
         'publish_transforms_updates': True,
     }
 
-    # ======================== 控制器配置 ========================
     controllers_yaml = PathJoinSubstitution([
         bringup_share, 'config', 'ros2_controllers.yaml'
     ])
 
-    # ======================== 节点 ========================
     robot_state_publisher_node = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
-        output='both',
+        output='log',
         parameters=[robot_description],
+        arguments=['--ros-args', '--log-level', 'warn'],
     )
 
     control_node = Node(
@@ -140,15 +129,18 @@ def generate_launch_description():
         output='both',
     )
 
-    # 虚拟关节 TF (world -> base_link)
     static_tf_node = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
-        arguments=['0', '0', '0', '0', '0', '0', 'world', 'base_link'],
-        output='screen',
+        arguments=[
+            '--x', '0', '--y', '0', '--z', '0',
+            '--roll', '0', '--pitch', '0', '--yaw', '0',
+            '--frame-id', 'world', '--child-frame-id', 'base_link',
+            '--ros-args', '--log-level', 'warn',
+        ],
+        output='log',
     )
 
-    # MoveIt2 move_group
     move_group_node = Node(
         package='moveit_ros_move_group',
         executable='move_group',
@@ -166,14 +158,13 @@ def generate_launch_description():
         ],
     )
 
-    # RViz
     rviz_config_file = PathJoinSubstitution([
         moveit_config_share, 'config', 'moveit.rviz'
     ])
     rviz_node = Node(
         package='rviz2',
         executable='rviz2',
-        arguments=['-d', rviz_config_file],
+        arguments=['-d', rviz_config_file, '--ros-args', '--log-level', 'warn'],
         parameters=[
             robot_description,
             robot_description_semantic,
@@ -181,11 +172,10 @@ def generate_launch_description():
             planning_pipeline_config,
             joint_limits_yaml,
         ],
-        output='screen',
+        output='log',
         condition=IfCondition(use_rviz),
     )
 
-    # 延迟启动控制器
     joint_state_broadcaster_spawner = Node(
         package='controller_manager',
         executable='spawner',
@@ -216,6 +206,7 @@ def generate_launch_description():
 
     return LaunchDescription(
         declared_args + [
+            OpaqueFunction(function=_print_launch_info),
             robot_state_publisher_node,
             control_node,
             static_tf_node,

@@ -63,6 +63,10 @@ hardware_interface::CallbackReturn AliciaHardwareInterface::on_init(
     ? info_.hardware_parameters.at("control_mode") : "pv";
   default_speed_ = info_.hardware_parameters.count("default_speed")
     ? std::stod(info_.hardware_parameters.at("default_speed")) : 1.0;
+  mit_kp_ = info_.hardware_parameters.count("mit_kp")
+    ? std::stod(info_.hardware_parameters.at("mit_kp")) : 50.0;
+  mit_kd_ = info_.hardware_parameters.count("mit_kd")
+    ? std::stod(info_.hardware_parameters.at("mit_kd")) : 2.0;
 
   control_aim_ = AIM_OPERATION;
 
@@ -85,7 +89,7 @@ hardware_interface::CallbackReturn AliciaHardwareInterface::on_init(
   first_feedback_received_ = false;
 
   RCLCPP_INFO(kLogger,
-    "初始化完成: port=%s, baudrate=%d, mode=%s",
+    "Initialized: port=%s, baud=%d, mode=%s",
     serial_port_name_.c_str(), baudrate_, control_mode_.c_str());
 
   return hardware_interface::CallbackReturn::SUCCESS;
@@ -94,11 +98,8 @@ hardware_interface::CallbackReturn AliciaHardwareInterface::on_init(
 hardware_interface::CallbackReturn AliciaHardwareInterface::on_configure(
   const rclcpp_lifecycle::State& /*previous_state*/)
 {
-  RCLCPP_INFO(kLogger, "配置硬件: 打开串口 %s @ %d",
-    serial_port_name_.c_str(), baudrate_);
-
   if (!serial_.open(serial_port_name_, baudrate_)) {
-    RCLCPP_ERROR(kLogger, "无法打开串口 %s", serial_port_name_.c_str());
+    RCLCPP_ERROR(kLogger, "Failed to open serial port %s", serial_port_name_.c_str());
     return hardware_interface::CallbackReturn::ERROR;
   }
 
@@ -107,16 +108,14 @@ hardware_interface::CallbackReturn AliciaHardwareInterface::on_configure(
 
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-  RCLCPP_INFO(kLogger, "硬件配置完成 (电机将在激活阶段使能)");
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
 hardware_interface::CallbackReturn AliciaHardwareInterface::on_activate(
   const rclcpp_lifecycle::State& /*previous_state*/)
 {
-  RCLCPP_INFO(kLogger, "激活硬件: 查询初始关节位置");
+  RCLCPP_INFO(kLogger, "Activating hardware...");
 
-  // 先查询初始位置（多次尝试），再使能电机，防止关节掉电下坠
   for (int attempt = 0; attempt < 20; ++attempt) {
     auto query = build_joint_query_frame(control_aim_);
     serial_.write(query);
@@ -128,11 +127,20 @@ hardware_interface::CallbackReturn AliciaHardwareInterface::on_activate(
     }
   }
 
-  if (!first_feedback_received_) {
-    RCLCPP_WARN(kLogger, "未收到初始关节反馈，使用默认零位");
+  if (first_feedback_received_) {
+    RCLCPP_INFO(kLogger, "\033[1;32m\nJoint positions (deg): [%.1f, %.1f, %.1f, %.1f, %.1f, %.1f]\033[0m",
+      hw_positions_[0] * 180.0 / M_PI,
+      hw_positions_[1] * 180.0 / M_PI,
+      hw_positions_[2] * 180.0 / M_PI,
+      hw_positions_[3] * 180.0 / M_PI,
+      hw_positions_[4] * 180.0 / M_PI,
+      hw_positions_[5] * 180.0 / M_PI);
+    RCLCPP_INFO(kLogger, "\033[1;32m\nGripper position: %.1f%%\033[0m",
+      finger_pos_to_percent(gripper_position_));
+  } else {
+    RCLCPP_WARN(kLogger, "No initial joint feedback, using default zero position");
   }
 
-  // 将当前位置设为命令目标，避免激活瞬间跳动
   for (size_t i = 0; i < NUM_JOINTS; ++i) {
     hw_commands_[i] = hw_positions_[i];
     prev_hw_positions_[i] = hw_positions_[i];
@@ -140,45 +148,55 @@ hardware_interface::CallbackReturn AliciaHardwareInterface::on_activate(
   gripper_command_ = gripper_position_;
   prev_gripper_position_ = gripper_position_;
 
-  // 使能电机 (不发送模式切换指令——电机上电后默认已处于 PV 模式，
-  // 发送 CMD 0x11 会导致控制回路重初始化，使电机短暂失去力矩)
-  RCLCPP_INFO(kLogger, "使能电机 (跳过模式切换)");
-  auto enable_frame = build_enable_frame(true, control_aim_);
-  serial_.write(enable_frame);
-  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  double grip_pct = finger_pos_to_percent(gripper_command_);
+  uint16_t grip_hw = gripper_percent_to_hw(grip_pct);
 
-  // 紧接着发送当前位置作为第一条控制指令，最小化无力矩窗口
-  {
+  if (control_mode_ == "mit") {
+    auto mit_init = build_mit_init_frame(
+      hw_commands_.data(), grip_hw, mit_kp_, mit_kd_, control_aim_);
+    serial_.write(mit_init);
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    serial_.write(mit_init);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    auto torque_frame = build_torque_frame(true, control_aim_);
+    serial_.write(torque_frame);
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    auto frame = build_mit_control_frame(
+      hw_commands_.data(), grip_hw, control_aim_);
+    serial_.write(frame);
+  } else {
+    auto enable_frame = build_enable_frame(true, control_aim_);
+    serial_.write(enable_frame);
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
     double speeds[NUM_JOINTS];
     for (size_t i = 0; i < NUM_JOINTS; ++i) {
       speeds[i] = default_speed_;
     }
-    double grip_pct = finger_pos_to_percent(gripper_command_);
-    uint16_t grip_hw = gripper_percent_to_hw(grip_pct);
     uint16_t grip_speed_hw = speed_to_hw(1.0);
-
     auto frame = build_pv_control_frame(
       hw_commands_.data(), speeds, grip_hw, grip_speed_hw, control_aim_);
     serial_.write(frame);
   }
 
-  RCLCPP_INFO(kLogger, "硬件已激活");
+  RCLCPP_INFO(kLogger, "\033[1;32m\nHardware activated (%s mode)\033[0m", control_mode_.c_str());
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
 hardware_interface::CallbackReturn AliciaHardwareInterface::on_deactivate(
   const rclcpp_lifecycle::State& /*previous_state*/)
 {
-  RCLCPP_INFO(kLogger, "停用硬件");
+  RCLCPP_INFO(kLogger, "Hardware deactivated");
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
 hardware_interface::CallbackReturn AliciaHardwareInterface::on_cleanup(
   const rclcpp_lifecycle::State& /*previous_state*/)
 {
-  RCLCPP_INFO(kLogger, "清理硬件: 关闭串口");
+  RCLCPP_INFO(kLogger, "Cleaning up, closing serial port");
 
-  // 失能电机
   if (serial_.is_open()) {
     auto disable_frame = build_enable_frame(false, control_aim_);
     serial_.write(disable_frame);
@@ -306,20 +324,23 @@ hardware_interface::return_type AliciaHardwareInterface::write(
     return hardware_interface::return_type::ERROR;
   }
 
-  // 构建速度数组（默认速度）
-  double speeds[NUM_JOINTS];
-  for (size_t i = 0; i < NUM_JOINTS; ++i) {
-    speeds[i] = default_speed_;
-  }
-
   double grip_pct = finger_pos_to_percent(gripper_command_);
   uint16_t grip_hw = gripper_percent_to_hw(grip_pct);
-  uint16_t grip_speed_hw = speed_to_hw(1.0);
 
-  auto frame = build_pv_control_frame(
-    hw_commands_.data(), speeds, grip_hw, grip_speed_hw, control_aim_);
-
-  serial_.write(frame);
+  if (control_mode_ == "mit") {
+    auto frame = build_mit_control_frame(
+      hw_commands_.data(), grip_hw, control_aim_);
+    serial_.write(frame);
+  } else {
+    double speeds[NUM_JOINTS];
+    for (size_t i = 0; i < NUM_JOINTS; ++i) {
+      speeds[i] = default_speed_;
+    }
+    uint16_t grip_speed_hw = speed_to_hw(1.0);
+    auto frame = build_pv_control_frame(
+      hw_commands_.data(), speeds, grip_hw, grip_speed_hw, control_aim_);
+    serial_.write(frame);
+  }
 
   return hardware_interface::return_type::OK;
 }
@@ -383,26 +404,19 @@ bool AliciaHardwareInterface::try_parse_feedback()
       hw_positions_[i] = fb->positions[i];
     }
 
-    // 跟踪夹爪原始值是否发生变化
     if (fb->gripper_raw != last_gripper_raw_) {
       last_gripper_raw_ = fb->gripper_raw;
       gripper_feedback_stale_cycles_ = 0;
       if (gripper_echo_active_) {
-        RCLCPP_INFO(kLogger, "夹爪硬件反馈恢复 (raw=%u), 退出插值模式",
-          fb->gripper_raw);
         gripper_echo_active_ = false;
       }
       gripper_position_ = percent_to_finger_pos(fb->gripper_position);
     } else {
-      // 原始值未变且命令与当前位置偏差较大时累计计数
       double cmd_diff = std::abs(gripper_command_ - gripper_position_);
       if (cmd_diff > 0.005) {
         gripper_feedback_stale_cycles_++;
         if (!gripper_echo_active_ &&
             gripper_feedback_stale_cycles_ >= GRIPPER_STALE_THRESHOLD) {
-          RCLCPP_WARN(kLogger,
-            "夹爪硬件反馈 %d 周期无变化 (raw=%u), 切换到插值模式",
-            gripper_feedback_stale_cycles_, fb->gripper_raw);
           gripper_echo_active_ = true;
         }
       } else {

@@ -1,28 +1,15 @@
 """
-hardware.launch.py - 仅启动硬件（ros2_control + 控制器）
+hardware.launch.py - Hardware only (ros2_control + controllers, no MoveIt2)
 
-启动内容:
-  - robot_state_publisher (加载带真实硬件插件的 URDF)
-  - ros2_control controller_manager
-  - joint_state_broadcaster
-  - arm_controller (JointTrajectoryController)
-  - gripper_controller (JointTrajectoryController)
-
-参数:
-  - serial_port: 串口设备路径 (默认 /dev/ttyACM0, 可选 /dev/ttyUSB0)
-  - control_mode: 控制模式 pv 或 mit (默认 pv)
-  - baudrate: 波特率 (默认 1000000)
-
-用法:
+Usage:
   ros2 launch alicia_m_bringup hardware.launch.py
-  ros2 launch alicia_m_bringup hardware.launch.py serial_port:=/dev/ttyUSB0
-  ros2 launch alicia_m_bringup hardware.launch.py control_mode:=mit
+  ros2 launch alicia_m_bringup hardware.launch.py serial_port:=/dev/ttyACM1
+  ros2 launch alicia_m_bringup hardware.launch.py control_mode:=mit mit_kp:=30.0 mit_kd:=1.5
 """
 
 import os
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, RegisterEventHandler, TimerAction
-from launch.event_handlers import OnProcessStart
+from launch.actions import DeclareLaunchArgument, OpaqueFunction, TimerAction
 from launch.substitutions import (
     Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
 )
@@ -31,29 +18,53 @@ from launch_ros.substitutions import FindPackageShare
 from launch_ros.parameter_descriptions import ParameterValue
 
 
+def _print_launch_config(context):
+    port = LaunchConfiguration('serial_port').perform(context)
+    mode = LaunchConfiguration('control_mode').perform(context)
+    baud = LaunchConfiguration('baudrate').perform(context)
+    speed = LaunchConfiguration('default_speed').perform(context)
+
+    print(f'\033[1;34m[INFO] Serial port: {port}\033[0m')
+    print(f'\033[1;34m[INFO] Control mode: {mode}\033[0m')
+    print(f'\033[1;34m[INFO] Baudrate: {baud}\033[0m')
+    print(f'\033[1;34m[INFO] Default speed: {speed} rad/s\033[0m')
+    if mode == 'mit':
+        kp = LaunchConfiguration('mit_kp').perform(context)
+        kd = LaunchConfiguration('mit_kd').perform(context)
+        print(f'\033[1;34m[INFO] MIT Kp={kp}, Kd={kd}\033[0m')
+    return []
+
+
 def generate_launch_description():
-    # ======================== 启动参数 ========================
     declared_args = [
         DeclareLaunchArgument(
             'serial_port', default_value='/dev/ttyACM0',
-            description='串口设备路径 (如 /dev/ttyACM0 或 /dev/ttyUSB0)'),
+            choices=['/dev/ttyACM0', '/dev/ttyACM1', '/dev/ttyACM2', '/dev/ttyACM3'],
+            description='Serial port'),
         DeclareLaunchArgument(
             'control_mode', default_value='pv',
-            description='控制模式: pv (位置+速度) 或 mit'),
+            description='Control mode: pv or mit'),
         DeclareLaunchArgument(
             'baudrate', default_value='1000000',
-            description='串口波特率'),
+            description='Serial baudrate'),
         DeclareLaunchArgument(
             'default_speed', default_value='1.0',
-            description='默认关节速度 (rad/s)'),
+            description='Default joint speed (rad/s)'),
+        DeclareLaunchArgument(
+            'mit_kp', default_value='50.0',
+            description='MIT mode Kp (0-500)'),
+        DeclareLaunchArgument(
+            'mit_kd', default_value='2.0',
+            description='MIT mode Kd (0-5)'),
     ]
 
     serial_port = LaunchConfiguration('serial_port')
     control_mode = LaunchConfiguration('control_mode')
     baudrate = LaunchConfiguration('baudrate')
     default_speed = LaunchConfiguration('default_speed')
+    mit_kp = LaunchConfiguration('mit_kp')
+    mit_kd = LaunchConfiguration('mit_kd')
 
-    # ======================== URDF 生成 ========================
     moveit_config_pkg = FindPackageShare('alicia_m_moveit_config')
 
     robot_description_content = Command([
@@ -67,24 +78,25 @@ def generate_launch_description():
         ' baudrate:=', baudrate,
         ' control_mode:=', control_mode,
         ' default_speed:=', default_speed,
+        ' mit_kp:=', mit_kp,
+        ' mit_kd:=', mit_kd,
     ])
 
     robot_description = {
         'robot_description': ParameterValue(robot_description_content, value_type=str)
     }
 
-    # ======================== 控制器配置 ========================
     bringup_pkg = FindPackageShare('alicia_m_bringup')
     controllers_yaml = PathJoinSubstitution([
         bringup_pkg, 'config', 'ros2_controllers.yaml'
     ])
 
-    # ======================== 节点 ========================
     robot_state_publisher_node = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
-        output='both',
+        output='log',
         parameters=[robot_description],
+        arguments=['--ros-args', '--log-level', 'warn'],
     )
 
     control_node = Node(
@@ -94,7 +106,6 @@ def generate_launch_description():
         output='both',
     )
 
-    # 控制器在 controller_manager 启动后延迟 spawn
     joint_state_broadcaster_spawner = Node(
         package='controller_manager',
         executable='spawner',
@@ -116,7 +127,6 @@ def generate_launch_description():
         output='screen',
     )
 
-    # controller_manager 启动后延时 spawn 控制器，避免竞争
     delayed_controllers = TimerAction(
         period=3.0,
         actions=[
@@ -128,6 +138,7 @@ def generate_launch_description():
 
     return LaunchDescription(
         declared_args + [
+            OpaqueFunction(function=_print_launch_config),
             robot_state_publisher_node,
             control_node,
             delayed_controllers,
