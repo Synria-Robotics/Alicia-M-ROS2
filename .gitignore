@@ -47,5 +47,8 @@ qtcreator-*
 # Emacs
 .#*
 
-# Catkin custom files
-CATKIN_IGNORE
+alicia_m_grasp_6d/Models/GraspGen/
+alicia_m_grasp_6d/Models/FoundationStereo/
+alicia_m_grasp_6d/Models/sam2/
+alicia_m_grasp_6d/scripts/.bridge_data/
+alicia_m_grasp_6d/scripts/outputs/
