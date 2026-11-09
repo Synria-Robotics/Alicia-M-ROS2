@@ -32,9 +32,9 @@ class ArucoDetector(Node):
         
         # 声明参数
         self.declare_parameter('aruco_dict', 'DICT_4X4_50')
-        self.declare_parameter('marker_size', 0.05)
+        self.declare_parameter('marker_size', 0.0765)
         self.declare_parameter('marker_id', 0)
-        self.declare_parameter('camera_topic', '/camera/camera/color/image_rect_raw')
+        self.declare_parameter('camera_topic', '/camera/camera/color/image_raw')
         self.declare_parameter('camera_info_topic', '/camera/camera/color/camera_info')
         self.declare_parameter('camera_frame', 'camera_color_optical_frame')
         self.declare_parameter('marker_frame', 'aruco_marker_frame')
@@ -97,7 +97,7 @@ class ArucoDetector(Node):
     
     def _init_aruco_detector(self):
         """初始化 ArUco 检测器"""
-        aruco_dict_map = {
+        self.aruco_dict_map = {
             'DICT_4X4_50': cv2.aruco.DICT_4X4_50,
             'DICT_4X4_100': cv2.aruco.DICT_4X4_100,
             'DICT_4X4_250': cv2.aruco.DICT_4X4_250,
@@ -114,15 +114,66 @@ class ArucoDetector(Node):
             'DICT_7X7_100': cv2.aruco.DICT_7X7_100,
             'DICT_7X7_250': cv2.aruco.DICT_7X7_250,
             'DICT_7X7_1000': cv2.aruco.DICT_7X7_1000,
+            'DICT_ARUCO_ORIGINAL': cv2.aruco.DICT_ARUCO_ORIGINAL,
         }
-        
-        if self.aruco_dict_name not in aruco_dict_map:
+
+        self.auto_dict_names = [
+            'DICT_4X4_50', 'DICT_5X5_50', 'DICT_6X6_50', 'DICT_7X7_50',
+            'DICT_ARUCO_ORIGINAL'
+        ]
+        self.auto_detect = self.aruco_dict_name.lower() == 'auto'
+        if not self.auto_detect and self.aruco_dict_name not in self.aruco_dict_map:
             self.get_logger().warn(f'未知的 ArUco 字典: {self.aruco_dict_name}, 使用默认 DICT_4X4_50')
             self.aruco_dict_name = 'DICT_4X4_50'
-        
-        self.aruco_dict = cv2.aruco.getPredefinedDictionary(aruco_dict_map[self.aruco_dict_name])
-        self.aruco_params = cv2.aruco.DetectorParameters()
-        self.aruco_detector = cv2.aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
+
+        self.aruco_params = (
+            cv2.aruco.DetectorParameters_create()
+            if hasattr(cv2.aruco, 'DetectorParameters_create')
+            else cv2.aruco.DetectorParameters()
+        )
+        self.aruco_params.minMarkerDistanceRate = 0.03
+        self._use_new_aruco_api = (
+            hasattr(cv2.aruco, 'ArucoDetector')
+            and tuple(int(v) for v in cv2.__version__.split('.')[:2]) >= (4, 7)
+        )
+        self.aruco_dict = None
+        self.aruco_detector = None
+        if not self.auto_detect:
+            self._set_aruco_dictionary(self.aruco_dict_name)
+
+    def _set_aruco_dictionary(self, dictionary_name):
+        self.aruco_dict_name = dictionary_name
+        self.aruco_dict = cv2.aruco.getPredefinedDictionary(
+            self.aruco_dict_map[dictionary_name])
+        self.aruco_detector = (
+            cv2.aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
+            if self._use_new_aruco_api else None
+        )
+
+    def _detect_with_current_dictionary(self, gray):
+        if self._use_new_aruco_api:
+            return self.aruco_detector.detectMarkers(gray)
+        return cv2.aruco.detectMarkers(
+            gray, self.aruco_dict, parameters=self.aruco_params)
+
+    def _detect_markers(self, gray):
+        if not self.auto_detect:
+            return self._detect_with_current_dictionary(gray)
+
+        for dictionary_name in self.auto_dict_names:
+            self._set_aruco_dictionary(dictionary_name)
+            result = self._detect_with_current_dictionary(gray)
+            ids = result[1]
+            if ids is not None and self.marker_id in ids.flatten():
+                self.auto_detect = False
+                self.get_logger().info(
+                    f'自动识别 ArUco 字典: {dictionary_name}')
+                return result
+
+        self.aruco_dict = None
+        self.aruco_detector = None
+        self.aruco_dict_name = 'auto'
+        return [], None, []
     
     def _camera_info_callback(self, msg):
         """相机信息回调函数"""
@@ -141,7 +192,7 @@ class ArucoDetector(Node):
             cv_image = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
             gray = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
             
-            corners, ids, rejected = self.aruco_detector.detectMarkers(gray)
+            corners, ids, rejected = self._detect_markers(gray)
             
             marker_detected = False
             if ids is not None and len(ids) > 0:
@@ -225,7 +276,8 @@ def main(args=None):
     finally:
         node.shutdown()
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':

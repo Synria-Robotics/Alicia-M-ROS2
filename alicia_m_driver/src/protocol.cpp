@@ -249,7 +249,9 @@ std::vector<uint8_t> build_mit_control_frame(
 std::vector<uint8_t> build_mode_switch_frame(uint32_t mode, uint8_t aim)
 {
   // CMD 0x11, 功能码 = 0x80 | aim
-  // 数据: [起始电机ID=0x01] [电机数量=0x07] [参数地址=0x0B] [模式值 LE32 4字节]
+  // 数据: [起始电机ID=0x01] [电机数量=0x06] [参数地址=0x0B] [模式值 LE32 4字节]
+  // 只切换 M0-M5；夹爪 M6 的固件控制模式固定为 MIT。向 7 个电机写入
+  // 会导致整条模式切换指令被固件拒绝。
   // 数据长度 = 7
   std::vector<uint8_t> frame = {
     FRAME_HEADER,
@@ -257,7 +259,7 @@ std::vector<uint8_t> build_mode_switch_frame(uint32_t mode, uint8_t aim)
     static_cast<uint8_t>(FUNC_WRITE_BIT | aim),
     0x07,  // 数据长度
     0x01,  // 起始电机 ID 索引 (从 1 开始)
-    0x07,  // 偏移电机数量 (7 个)
+    0x06,  // 偏移电机数量 (6 个关节，不含夹爪)
     MOTOR_PARAM_CONTROL_MODE,  // 参数地址 0x0B
     static_cast<uint8_t>(mode & 0xFF),
     static_cast<uint8_t>((mode >> 8) & 0xFF),

@@ -1,41 +1,49 @@
 hand_eye_calibration:
+  aruco_dictionary: DICT_4X4_50
   aruco_marker_id: 0
-  aruco_marker_size: 0.05
-  calibration_method: daniilidis
-  child_frame_id: camera_link
-  date: '2026-03-13 16:39:10'
+  aruco_marker_size: 0.0765
+  calibration_method: horaud
+  child_frame_id: camera_color_optical_frame
+  date: '2026-11-09 11:38:00'
   frame_id: tool0
+  robot_model: alicia_m_v1_2_follower
+  quality:
+    consistency_score: 0.003068
+    retained_samples: 15
+    rejected_samples: []
+    rotation_rmse_deg: 1.561
+    translation_rmse_m: 0.001706
   samples_count: 15
   transform:
     matrix_4x4:
-    - - 0.10802938856508137
-      - 0.8592208887137118
-      - 0.5000691108279675
-      - -0.05655404278074756
-    - - -0.9940828631344185
-      - 0.08761662346530252
-      - 0.06420738676364793
-      - 0.00973770199245885
-    - - 0.011353960927003887
-      - -0.5040464181903873
-      - 0.8636019313785196
-      - -0.09466390815730653
+    - - 0.01596649
+      - 0.85220657
+      - 0.52296178
+      - -0.0645219673
+    - - -0.9998599
+      - 0.01623731
+      - 0.00406666
+      - 0.0078139188
+    - - -0.00502586
+      - -0.52295344
+      - 0.85234643
+      - -0.0737227458
     - - 0.0
       - 0.0
       - 0.0
       - 1.0
     rotation:
       euler_xyz_deg:
-        pitch: -0.6505480196718724
-        roll: -30.270227444890438
-        yaw: -83.79786776958301
+        pitch: 0.28796187
+        roll: -31.53101593
+        yaw: -89.08513711
       quaternion:
-        w: 0.7175039970984314
-        x: -0.19799673843352777
-        y: 0.17028307573104665
-        z: -0.6457468388130397
+        w: 0.6863946
+        x: -0.1919523
+        y: 0.1923047
+        z: -0.6745633
     translation:
-      x: -0.05655404278074756
-      y: 0.00973770199245885
-      z: -0.09466390815730653
+      x: -0.0645219673
+      y: 0.0078139188
+      z: -0.0737227458
   type: eye_in_hand

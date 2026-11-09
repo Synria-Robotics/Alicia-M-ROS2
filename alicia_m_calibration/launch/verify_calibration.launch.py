@@ -163,7 +163,8 @@ def load_calibration_result(context, *args, **kwargs):
             'camera_topic': camera_topic,
             'camera_info_topic': camera_info_topic,
             'camera_frame': 'camera_color_optical_frame',
-            'marker_frame': 'aruco_marker_frame'
+            'marker_frame': 'aruco_marker_frame',
+            'show_image': False
         }]
     )
     
@@ -187,7 +188,7 @@ def generate_launch_description():
     # RealSense D405 相机话题
     camera_topic_arg = DeclareLaunchArgument(
         'camera_topic', 
-        default_value='/camera/camera/color/image_rect_raw',
+        default_value='/camera/camera/color/image_raw',
         description='Camera image topic (RealSense D405)'
     )
     

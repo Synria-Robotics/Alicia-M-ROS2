@@ -44,15 +44,16 @@ class HandEyeCalibration(Node):
         
         # 声明参数
         self.declare_parameter('aruco_dict', 'DICT_4X4_50')
-        self.declare_parameter('marker_size', 0.05)  # 标记边长 (米)
+        self.declare_parameter('marker_size', 0.0765)  # 标记边长 (米)
         self.declare_parameter('marker_id', 0)  # 目标标记ID
-        self.declare_parameter('camera_topic', '/camera/camera/color/image_rect_raw')
+        self.declare_parameter('camera_topic', '/camera/camera/color/image_raw')
         self.declare_parameter('camera_info_topic', '/camera/camera/color/camera_info')
         self.declare_parameter('base_link', 'base_link')
         self.declare_parameter('end_effector_link', 'tool0')
         self.declare_parameter('min_samples', 15)  # 最小采样数
-        self.declare_parameter('calibration_method', 'daniilidis')  # 标定算法
+        self.declare_parameter('calibration_method', 'horaud')  # 已通过同桌面 z≈0 实机验证
         self.declare_parameter('output_file', 'hand_eye_calibration_result.yaml')
+        self.declare_parameter('show_image', False)
         
         # 获取参数
         self.aruco_dict_name = self.get_parameter('aruco_dict').value
@@ -65,6 +66,7 @@ class HandEyeCalibration(Node):
         self.min_samples = self.get_parameter('min_samples').value
         self.calibration_method = self.get_parameter('calibration_method').value
         self.output_file = self.get_parameter('output_file').value
+        self.show_image = self.get_parameter('show_image').value
         
         # 初始化 ArUco 检测器
         self._init_aruco_detector()
@@ -151,7 +153,10 @@ class HandEyeCalibration(Node):
         )
         
         # 图像显示定时器
-        self.display_timer = self.create_timer(0.033, self._display_image)
+        self.display_timer = (
+            self.create_timer(0.033, self._display_image)
+            if self.show_image else None
+        )
         
         # 标定位姿列表（针对Alicia-M重新设计）
         self.calibration_poses = self._generate_calibration_poses()
@@ -169,7 +174,7 @@ class HandEyeCalibration(Node):
     
     def _init_aruco_detector(self):
         """初始化 ArUco 检测器"""
-        aruco_dict_map = {
+        self.aruco_dict_map = {
             'DICT_4X4_50': cv2.aruco.DICT_4X4_50,
             'DICT_4X4_100': cv2.aruco.DICT_4X4_100,
             'DICT_4X4_250': cv2.aruco.DICT_4X4_250,
@@ -186,15 +191,73 @@ class HandEyeCalibration(Node):
             'DICT_7X7_100': cv2.aruco.DICT_7X7_100,
             'DICT_7X7_250': cv2.aruco.DICT_7X7_250,
             'DICT_7X7_1000': cv2.aruco.DICT_7X7_1000,
+            'DICT_ARUCO_ORIGINAL': cv2.aruco.DICT_ARUCO_ORIGINAL,
         }
-        
-        if self.aruco_dict_name not in aruco_dict_map:
+
+        # For ID 0, the smallest dictionary of each bit size is sufficient and
+        # avoids duplicate matches in the larger supersets.
+        self.auto_dict_names = [
+            'DICT_4X4_50', 'DICT_5X5_50', 'DICT_6X6_50', 'DICT_7X7_50',
+            'DICT_ARUCO_ORIGINAL'
+        ]
+        self.auto_detect = self.aruco_dict_name.lower() == 'auto'
+        if not self.auto_detect and self.aruco_dict_name not in self.aruco_dict_map:
             self.get_logger().warn(f'未知的 ArUco 字典: {self.aruco_dict_name}, 使用默认 DICT_4X4_50')
             self.aruco_dict_name = 'DICT_4X4_50'
-        
-        self.aruco_dict = cv2.aruco.getPredefinedDictionary(aruco_dict_map[self.aruco_dict_name])
-        self.aruco_params = cv2.aruco.DetectorParameters()
-        self.aruco_detector = cv2.aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
+
+        # Ubuntu 24 may still load the ROS/OpenCV 4.6 Python bindings. Although
+        # they expose the newer constructor symbol, mutating that object can
+        # segfault; the legacy factory is the supported 4.6 path.
+        self.aruco_params = (
+            cv2.aruco.DetectorParameters_create()
+            if hasattr(cv2.aruco, 'DetectorParameters_create')
+            else cv2.aruco.DetectorParameters()
+        )
+        # The supplied marker has a narrow white mounting-board margin. OpenCV's
+        # default 0.05 rejects the real marker as too close to the board contour.
+        self.aruco_params.minMarkerDistanceRate = 0.03
+        self._use_new_aruco_api = (
+            hasattr(cv2.aruco, 'ArucoDetector')
+            and tuple(int(v) for v in cv2.__version__.split('.')[:2]) >= (4, 7)
+        )
+        self.aruco_dict = None
+        self.aruco_detector = None
+        if not self.auto_detect:
+            self._set_aruco_dictionary(self.aruco_dict_name)
+
+    def _set_aruco_dictionary(self, dictionary_name):
+        self.aruco_dict_name = dictionary_name
+        self.aruco_dict = cv2.aruco.getPredefinedDictionary(
+            self.aruco_dict_map[dictionary_name])
+        self.aruco_detector = (
+            cv2.aruco.ArucoDetector(self.aruco_dict, self.aruco_params)
+            if self._use_new_aruco_api else None
+        )
+
+    def _detect_with_current_dictionary(self, gray):
+        if self._use_new_aruco_api:
+            return self.aruco_detector.detectMarkers(gray)
+        return cv2.aruco.detectMarkers(
+            gray, self.aruco_dict, parameters=self.aruco_params)
+
+    def _detect_markers(self, gray):
+        if not self.auto_detect:
+            return self._detect_with_current_dictionary(gray)
+
+        for dictionary_name in self.auto_dict_names:
+            self._set_aruco_dictionary(dictionary_name)
+            result = self._detect_with_current_dictionary(gray)
+            ids = result[1]
+            if ids is not None and self.marker_id in ids.flatten():
+                self.auto_detect = False
+                self.get_logger().info(
+                    f'自动识别 ArUco 字典: {dictionary_name}')
+                return result
+
+        self.aruco_dict = None
+        self.aruco_detector = None
+        self.aruco_dict_name = 'auto'
+        return [], None, []
     
     def _generate_calibration_poses(self):
         """
@@ -286,7 +349,7 @@ class HandEyeCalibration(Node):
         """检测 ArUco 标记并估计位姿"""
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         
-        corners, ids, rejected = self.aruco_detector.detectMarkers(gray)
+        corners, ids, rejected = self._detect_markers(gray)
         
         self.marker_detected = False
         self.current_rvec = None
@@ -372,7 +435,7 @@ class HandEyeCalibration(Node):
         
         if self.camera_matrix is not None:
             gray = cv2.cvtColor(display_img, cv2.COLOR_BGR2GRAY)
-            corners, ids, rejected = self.aruco_detector.detectMarkers(gray)
+            corners, ids, rejected = self._detect_markers(gray)
             
             if ids is not None:
                 cv2.aruco.drawDetectedMarkers(display_img, corners, ids)
@@ -787,17 +850,145 @@ class HandEyeCalibration(Node):
         t_gripper2base = [t.reshape(3, 1) for t in self.t_gripper2base_samples]
         R_target2cam = [r for r in self.R_target2cam_samples]
         t_target2cam = [t.reshape(3, 1) for t in self.t_target2cam_samples]
+
+        def as_transform(rotation, translation):
+            transform = np.eye(4, dtype=np.float64)
+            transform[:3, :3] = np.asarray(rotation).reshape(3, 3)
+            transform[:3, 3] = np.asarray(translation).reshape(3)
+            return transform
+
+        base_gripper = [
+            as_transform(rotation, translation)
+            for rotation, translation in zip(R_gripper2base, t_gripper2base)
+        ]
+        camera_target = [
+            as_transform(rotation, translation)
+            for rotation, translation in zip(R_target2cam, t_target2cam)
+        ]
+
+        def fuse_poses(transforms):
+            fused = np.eye(4, dtype=np.float64)
+            fused[:3, :3] = R.from_matrix(
+                [transform[:3, :3] for transform in transforms]).mean().as_matrix()
+            fused[:3, 3] = np.median(
+                [transform[:3, 3] for transform in transforms], axis=0)
+            return fused
+
+        def evaluate(rotation, translation, indices):
+            gripper_camera = as_transform(rotation, translation)
+            board_poses = [
+                base_gripper[index] @ gripper_camera @ camera_target[index]
+                for index in indices
+            ]
+            reference = fuse_poses(board_poses)
+            position_errors = np.array([
+                np.linalg.norm(pose[:3, 3] - reference[:3, 3])
+                for pose in board_poses
+            ])
+            reference_rotation = R.from_matrix(reference[:3, :3])
+            rotation_errors = np.array([
+                (reference_rotation.inv() * R.from_matrix(pose[:3, :3])).magnitude()
+                for pose in board_poses
+            ])
+            return position_errors, rotation_errors
+
+        def direct_fit(indices):
+            # Follow geom/src/calibration/core/hand_eye.py: OpenCV is only the
+            # bootstrap.  The fixed board pose is fused in the base frame, then
+            # every sample directly yields one tool0->camera transform.
+            r_boot, t_boot = cv2.calibrateHandEye(
+                [R_gripper2base[index] for index in indices],
+                [t_gripper2base[index] for index in indices],
+                [R_target2cam[index] for index in indices],
+                [t_target2cam[index] for index in indices],
+                method=cv2.CALIB_HAND_EYE_PARK)
+            bootstrap = as_transform(r_boot, t_boot)
+            base_board = fuse_poses([
+                base_gripper[index] @ bootstrap @ camera_target[index]
+                for index in indices
+            ])
+            candidates = [
+                np.linalg.inv(base_gripper[index])
+                @ base_board
+                @ np.linalg.inv(camera_target[index])
+                for index in indices
+            ]
+            fitted = fuse_poses(candidates)
+            return fitted[:3, :3], fitted[:3, 3]
+
+        # As in geom, remove at most two samples with the largest fixed-board
+        # residual.  Keep the original 1-based indices in the result for audit.
+        direct_indices = list(range(len(base_gripper)))
+        rejected_samples = []
+        try:
+            for _ in range(2):
+                if len(direct_indices) <= 10:
+                    break
+                direct_r, direct_t = direct_fit(direct_indices)
+                pos_errors, rot_errors = evaluate(
+                    direct_r, direct_t, direct_indices)
+                scores = pos_errors * 1000.0 + 0.5 * np.degrees(rot_errors)
+                worst_local = int(np.argmax(scores))
+                rejected_samples.append(direct_indices.pop(worst_local) + 1)
+
+            direct_r, direct_t = direct_fit(direct_indices)
+            pos_errors, rot_errors = evaluate(
+                direct_r, direct_t, direct_indices)
+            direct_translation_rmse = float(np.sqrt(np.mean(pos_errors ** 2)))
+            direct_rotation_rmse = float(np.sqrt(np.mean(rot_errors ** 2)))
+            results['direct'] = {
+                'R': direct_r,
+                't': direct_t,
+                'translation_rmse_m': direct_translation_rmse,
+                'rotation_rmse_deg': float(np.degrees(direct_rotation_rmse)),
+                'consistency_score': direct_translation_rmse + 0.05 * direct_rotation_rmse,
+                'rejected_samples': rejected_samples,
+                'retained_samples': len(direct_indices),
+                'success': True,
+            }
+        except Exception as error:
+            results['direct'] = {'error': str(error), 'success': False}
         
         for name, method in methods.items():
             try:
-                R, t = cv2.calibrateHandEye(
+                r_cam, t_cam = cv2.calibrateHandEye(
                     R_gripper2base, t_gripper2base,
                     R_target2cam, t_target2cam,
                     method=method
                 )
+
+                # The marker is stationary, so a correct eye-in-hand transform
+                # makes its base-frame pose agree across every sample.
+                target_transforms = []
+                for rg, tg, rt, tt in zip(
+                        R_gripper2base, t_gripper2base,
+                        R_target2cam, t_target2cam):
+                    t_base_gripper = np.eye(4)
+                    t_base_gripper[:3, :3] = rg
+                    t_base_gripper[:3, 3] = np.asarray(tg).reshape(3)
+                    t_gripper_camera = np.eye(4)
+                    t_gripper_camera[:3, :3] = r_cam
+                    t_gripper_camera[:3, 3] = np.asarray(t_cam).reshape(3)
+                    t_camera_target = np.eye(4)
+                    t_camera_target[:3, :3] = rt
+                    t_camera_target[:3, 3] = np.asarray(tt).reshape(3)
+                    target_transforms.append(
+                        t_base_gripper @ t_gripper_camera @ t_camera_target)
+
+                translations = np.array([m[:3, 3] for m in target_transforms])
+                translation_rmse = float(np.sqrt(np.mean(np.sum(
+                    (translations - translations.mean(axis=0)) ** 2, axis=1))))
+                rotations = R.from_matrix([m[:3, :3] for m in target_transforms])
+                mean_rotation = rotations.mean()
+                rotation_errors = (mean_rotation.inv() * rotations).magnitude()
+                rotation_rmse_rad = float(np.sqrt(np.mean(rotation_errors ** 2)))
+                consistency_score = translation_rmse + 0.05 * rotation_rmse_rad
                 results[name] = {
-                    'R': R,
-                    't': t.flatten(),
+                    'R': r_cam,
+                    't': t_cam.flatten(),
+                    'translation_rmse_m': translation_rmse,
+                    'rotation_rmse_deg': float(np.degrees(rotation_rmse_rad)),
+                    'consistency_score': consistency_score,
                     'success': True
                 }
             except Exception as e:
@@ -824,10 +1015,14 @@ class HandEyeCalibration(Node):
             'hand_eye_calibration': {
                 'type': 'eye_in_hand',
                 'frame_id': self.end_effector_link,
-                'child_frame_id': 'camera_link',
+                # calibrateHandEye consumes marker poses measured in the color
+                # optical frame, so the raw result is tool0 -> optical frame.
+                'child_frame_id': 'camera_color_optical_frame',
                 'date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 'samples_count': len(self.R_gripper2base_samples),
                 'calibration_method': self.calibration_method,
+                'quality': getattr(self, 'selected_quality', {}),
+                'aruco_dictionary': self.aruco_dict_name,
                 'aruco_marker_id': self.marker_id,
                 'aruco_marker_size': self.marker_size,
                 'transform': {
@@ -857,7 +1052,8 @@ class HandEyeCalibration(Node):
         try:
             package_share_dir = get_package_share_directory('alicia_m_calibration')
             workspace_root = os.path.abspath(os.path.join(package_share_dir, '..', '..', '..', '..'))
-            config_dir = os.path.join(workspace_root, 'src', 'alicia_m_calibration', 'config')
+            source_package_dir = os.path.join(workspace_root, 'alicia_m_calibration')
+            config_dir = os.path.join(source_package_dir, 'config')
         except Exception as e:
             self.get_logger().warn(f'无法获取包路径: {e}，使用脚本相对路径')
             script_dir = os.path.dirname(__file__)
@@ -967,10 +1163,35 @@ class HandEyeCalibration(Node):
         for name, result in all_results.items():
             if result['success']:
                 t = result['t']
-                self.get_logger().info(f'  {name}: t=[{t[0]:.4f}, {t[1]:.4f}, {t[2]:.4f}]')
+                self.get_logger().info(
+                    f'  {name}: t=[{t[0]:.4f}, {t[1]:.4f}, {t[2]:.4f}], '
+                    f't_rmse={result["translation_rmse_m"]*1000:.2f} mm, '
+                    f'R_rmse={result["rotation_rmse_deg"]:.2f} deg')
             else:
                 self.get_logger().warn(f'  {name}: 计算失败 - {result.get("error", "未知错误")}')
         
+        if self.calibration_method == 'auto':
+            valid_results = {
+                name: result for name, result in all_results.items()
+                if result['success'] and np.isfinite(result['consistency_score'])
+            }
+            if not valid_results:
+                self.get_logger().error('所有算法都计算失败')
+                return False
+            # The geom-style direct fit is useful as a diagnostic, but the
+            # small wrist motions used here do not constrain its absolute
+            # translation sufficiently. Never auto-select it solely from an
+            # internal fixed-board residual; the table-height validation is an
+            # independent physical constraint.
+            standard_results = {
+                name: result for name, result in valid_results.items()
+                if name != 'direct'
+            }
+            candidates = standard_results or valid_results
+            self.calibration_method = min(
+                candidates, key=lambda name: candidates[name]['consistency_score'])
+            self.get_logger().info(f'按跨样本一致性自动选择算法: {self.calibration_method}')
+
         if self.calibration_method in all_results and all_results[self.calibration_method]['success']:
             R_result = all_results[self.calibration_method]['R']
             t_result = all_results[self.calibration_method]['t']
@@ -984,6 +1205,16 @@ class HandEyeCalibration(Node):
             else:
                 self.get_logger().error('所有算法都计算失败')
                 return False
+
+        selected = all_results[self.calibration_method]
+        self.selected_quality = {
+            'translation_rmse_m': selected['translation_rmse_m'],
+            'rotation_rmse_deg': selected['rotation_rmse_deg'],
+            'consistency_score': selected['consistency_score'],
+            'retained_samples': selected.get(
+                'retained_samples', len(self.R_gripper2base_samples)),
+            'rejected_samples': selected.get('rejected_samples', []),
+        }
         
         self.save_result(R_result, t_result)
         
@@ -992,7 +1223,8 @@ class HandEyeCalibration(Node):
     
     def shutdown(self):
         """关闭节点"""
-        cv2.destroyAllWindows()
+        if self.show_image:
+            cv2.destroyAllWindows()
 
 
 def main(args=None):
@@ -1000,6 +1232,7 @@ def main(args=None):
     rclpy.init(args=args)
     
     node = HandEyeCalibration()
+    success = False
     
     try:
         success = node.run_calibration()

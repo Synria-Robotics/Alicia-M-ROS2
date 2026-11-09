@@ -22,6 +22,10 @@
   <depend>std_msgs</depend>
   <depend>moveit_msgs</depend>
 
+  <!-- RealSense D405 ROS driver used by the calibration launch workflow. -->
+  <exec_depend>realsense2_camera</exec_depend>
+  <exec_depend>realsense2_description</exec_depend>
+
   <exec_depend>python3-opencv</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-scipy</exec_depend>

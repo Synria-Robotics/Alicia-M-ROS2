@@ -12,13 +12,13 @@ def generate_launch_description():
     aruco_dict_arg = DeclareLaunchArgument(
         'aruco_dict',
         default_value='DICT_4X4_50',
-        description='ArUco dictionary type (e.g., DICT_4X4_50, DICT_5X5_100)'
+        description='ArUco dictionary type'
     )
     
     marker_size_arg = DeclareLaunchArgument(
         'marker_size',
-        default_value='0.05',
-        description='ArUco marker size in meters (5cm default)'
+        default_value='0.0765',
+        description='ArUco marker size in meters'
     )
     
     marker_id_arg = DeclareLaunchArgument(
@@ -30,7 +30,7 @@ def generate_launch_description():
     # RealSense D405 相机话题
     camera_topic_arg = DeclareLaunchArgument(
         'camera_topic',
-        default_value='/camera/camera/color/image_rect_raw',
+        default_value='/camera/camera/color/image_raw',
         description='Camera image topic (RealSense D405)'
     )
     
@@ -61,14 +61,20 @@ def generate_launch_description():
     
     calibration_method_arg = DeclareLaunchArgument(
         'calibration_method',
-        default_value='daniilidis',
-        description='Hand-eye calibration method (tsai, park, horaud, daniilidis, andreff)'
+        default_value='horaud',
+        description='Hand-eye calibration method (auto, tsai, park, horaud, daniilidis, andreff)'
     )
     
     output_file_arg = DeclareLaunchArgument(
         'output_file',
         default_value='hand_eye_calibration_result.yaml',
         description='Output file name for calibration result'
+    )
+
+    show_image_arg = DeclareLaunchArgument(
+        'show_image',
+        default_value='false',
+        description='Show the OpenCV detection window (requires a desktop DISPLAY)'
     )
     
     # 手眼标定节点
@@ -88,6 +94,7 @@ def generate_launch_description():
             'min_samples': LaunchConfiguration('min_samples'),
             'calibration_method': LaunchConfiguration('calibration_method'),
             'output_file': LaunchConfiguration('output_file'),
+            'show_image': LaunchConfiguration('show_image'),
         }],
     )
     
@@ -114,6 +121,7 @@ def generate_launch_description():
         min_samples_arg,
         calibration_method_arg,
         output_file_arg,
+        show_image_arg,
         
         # 节点
         calibration_node,

@@ -1,89 +1,126 @@
 # Alicia-M-ROS2
 
-[![ROS2](https://img.shields.io/badge/ROS2-Humble-blue.svg)](https://docs.ros.org/en/humble/)
+[![ROS 2](https://img.shields.io/badge/ROS%202-Jazzy-blue.svg)](https://docs.ros.org/en/jazzy/)
+[![Ubuntu](https://img.shields.io/badge/Ubuntu-24.04-E95420.svg)](https://releases.ubuntu.com/24.04/)
 
-## 项目简介 | Project & Feature Overview
+## 项目简介
 
-`Alicia-M-ROS2` 是用于控制 Alicia-M 系列机械臂的 ROS2 工作区。项目基于 ROS 2 Humble，提供从底层驱动到上层规划的完整控制链路，覆盖硬件启动、MoveIt 运动规划、模型可视化与手眼标定等核心能力。
+本分支 `jazzy` 面向 **Ubuntu 24.04、ROS 2 Jazzy 和 Alicia-M v1.2**，提供：
 
-主要功能：
+- `ros2_control` 串口硬件驱动
+- MoveIt 2 规划与轨迹执行
+- Alicia-M v1.2 URDF、mesh 与碰撞配置
+- RealSense D405 眼在手上手眼标定
+- ArUco 检测和标定结果验证
+- MoveIt 示例程序
 
-- `ros2_control` 硬件驱动集成（串口通信）
-- MoveIt2 规划与执行支持
-- 机械臂模型显示与 RViz 可视化
-- 手眼标定（眼在手上，适配intel realsense d405）与标定结果验证
-- Python 脚本示例（如 Pick and Place）
-- (待开发)物块分拣工作流（2D抓取）
-- (待开发)基于 GraspGen（NVIDIA 2025）的 6D 抓取工作流。
+Ubuntu 22.04 / ROS 2 Humble 版本请使用项目的 `main` 分支。
 
-## 项目结构
+## 工作区结构
 
 ```text
-src/
-├── alicia_m_bringup/          # 机械臂硬件与 MoveIt 启动入口
-├── alicia_m_calibration/      # 手眼标定与验证脚本
-├── alicia_m_descriptions/     # URDF、mesh、RViz 显示配置
-├── alicia_m_driver/           # ros2_control 硬件驱动（串口通信）
-├── alicia_m_grasp_6d/         # 6D 抓取模块（待开发）
-├── alicia_m_moveit_config/    # MoveIt2 配置与控制器配置
-└── examples/                  # MoveIt 示例脚本
+alicia_m_bringup/          # 硬件、MoveIt 和仿真启动入口
+alicia_m_calibration/      # 手眼标定、ArUco 检测与验证
+alicia_m_descriptions/     # Alicia-M v1.2 URDF、mesh 和 RViz 配置
+alicia_m_driver/           # ros2_control 串口硬件驱动
+alicia_m_grasp_6d/         # 6D 抓取模块（开发中）
+alicia_m_moveit_config/    # MoveIt 2 与控制器配置
+examples/                  # 示例程序
+setup_jazzy.sh             # Jazzy 依赖安装与构建脚本
 ```
 
-## 安装方式
+## 安装
 
-### 1. 环境要求
-
-- Ubuntu 22.04
-- ROS2 Humble
-
-### 2. 依赖安装
+### 1. 获取 Jazzy 分支
 
 ```bash
-rosdep update
-rosdep install --from-paths src --ignore-src -r -y
+git clone -b jazzy git@github.com:Synria-Robotics/Alicia-M-ROS2.git
+cd Alicia-M-ROS2
 ```
 
-### 3. 编译工作区
+### 2. 安装依赖并构建
 
-在工作区根目录（包含 `src/`）执行：
+系统需要预先安装 ROS 2 Jazzy。首次使用 `rosdep` 时执行：
 
 ```bash
-source /opt/ros/humble/setup.bash
-colcon build --symlink-install
+sudo rosdep init
+```
+
+随后在仓库根目录运行：
+
+```bash
+./setup_jazzy.sh
+source /opt/ros/jazzy/setup.bash
 source install/setup.bash
 ```
 
-## 基本使用（启动机械臂）
+脚本会运行 `rosdep update`、安装 Jazzy 依赖，并使用系统 Python 完成
+`colcon build --symlink-install`。
 
-设置临时串口权限：
+## 启动机械臂
+
+确认当前用户属于 `dialout` 组；如果不是，请执行以下命令并重新登录：
 
 ```bash
-sudo chmod 666 /dev/ttyACM*
+sudo usermod -aG dialout "$USER"
 ```
 
-加载工作区环境：
+检查串口：
 
 ```bash
-source /opt/ros/humble/setup.bash
+ls -l /dev/ttyACM*
+```
+
+启动硬件和 MoveIt，串口名称请按实际设备修改：
+
+```bash
+source /opt/ros/jazzy/setup.bash
 source install/setup.bash
+ros2 launch alicia_m_bringup moveit_hardware.launch.py \
+  serial_port:=/dev/ttyACM1 default_speed:=0.3
 ```
 
-
-
-### Option 1. 启动硬件 + MoveIt（推荐）
+其他启动方式：
 
 ```bash
-ros2 launch alicia_m_bringup moveit_hardware.launch.py
-```
+# 只启动硬件控制
+ros2 launch alicia_m_bringup hardware.launch.py serial_port:=/dev/ttyACM1
 
-### Option 2. 单独启动硬件控制
-
-```bash
-ros2 launch alicia_m_bringup hardware.launch.py
-```
-
-### Option 3. 启动仿真 + MoveIt
-
-```bash
+# 使用 mock hardware 启动 MoveIt 仿真
 ros2 launch alicia_m_bringup moveit_sim.launch.py
 ```
+
+## RealSense D405 手眼标定
+
+启动相机：
+
+```bash
+ros2 launch realsense2_camera rs_launch.py enable_color:=true enable_depth:=false
+```
+
+保持相机和硬件 MoveIt 运行，在另一个终端执行：
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+ros2 launch alicia_m_calibration hand_eye_calibration.launch.py \
+  aruco_dict:=DICT_4X4_50 marker_id:=0 marker_size:=0.0765
+```
+
+标定结果保存到：
+
+```text
+alicia_m_calibration/config/hand_eye_calibration_result.yaml
+```
+
+验证结果：
+
+```bash
+ros2 launch alicia_m_calibration verify_calibration.launch.py \
+  calibration_file:="$PWD/alicia_m_calibration/config/hand_eye_calibration_result.yaml"
+
+ros2 run tf2_ros tf2_echo base_link aruco_marker_frame
+```
+
+当前实机配置中，机械臂底座和 ArUco 位于同一桌面，验证得到的标记高度约为
+`z = 0.002 m`。
