@@ -16,7 +16,7 @@ from rclpy.action import ActionClient
 from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
-from sensor_msgs.msg import CameraInfo, Image
+from sensor_msgs.msg import CameraInfo, Image, JointState
 from tf2_ros import Buffer, TransformListener
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
@@ -45,12 +45,12 @@ EYE_IN_HAND_POSES = [
 ]
 
 
-def eye_to_hand_poses(arm_id):
-    reference = (
-        [-0.38, -1.34, -0.52, -0.24, 1.05, 0.02]
-        if arm_id == 'slave'
-        else [0.37, -1.18, -0.34, 0.15, 0.99, -0.11]
-    )
+def eye_to_hand_poses():
+    """Generate poses for the single robot connected by serial port."""
+    # Keep the tool-mounted marker fully inside the fixed D405 image.  The old
+    # pose put its black border against the top-left image boundary, so ArUco
+    # could not see the required white quiet zone.
+    reference = [0.70, -1.40, -0.34, 0.15, 0.99, -0.11]
 
     def pose(*offsets):
         offsets += (0.0,) * (6 - len(offsets))
@@ -79,20 +79,20 @@ class Calibration(Node):
         eye_in_hand = self.mode == 'eye_in_hand'
         defaults = {
             'aruco_dict': 'DICT_4X4_50',
-            'marker_size': .0765 if eye_in_hand else .05,
+            'marker_size': .0765,
             'marker_id': 0,
             'camera_topic': ('/camera/camera/color/image_raw' if eye_in_hand
-                             else '/cam1/cam1/color/image_raw'),
+                             else '/camera/cam1/color/image_raw'),
             'camera_info_topic': ('/camera/camera/color/camera_info'
                                   if eye_in_hand
-                                  else '/cam1/cam1/color/camera_info'),
+                                  else '/camera/cam1/color/camera_info'),
             'base_link': 'base_link',
             'tool_link': 'tool0',
+            'robot_model': 'alicia_m_v1_2_follower',
             'samples': 15 if eye_in_hand else 18,
             'method': 'horaud' if eye_in_hand else 'park',
             'output': ('hand_eye_calibration_result.yaml' if eye_in_hand
                        else 'eye_to_hand_calibration_result.yaml'),
-            'arm_id': 'master',
         }
         for name, value in defaults.items():
             self.declare_parameter(name, value)
@@ -100,7 +100,9 @@ class Calibration(Node):
 
         self.bridge = CvBridge()
         self.camera_matrix = None
+        self.camera_frame = None
         self.dist_coeffs = None
+        self.joint_positions = None
         self.tracker = ArucoTracker(
             self.aruco_dict, self.marker_id, self.marker_size,
             max_translation_std=.005 if eye_in_hand else .01)
@@ -112,6 +114,8 @@ class Calibration(Node):
         self.create_subscription(Image, self.camera_topic, self.on_image, qos)
         self.create_subscription(
             CameraInfo, self.camera_info_topic, self.on_camera_info, 10)
+        self.create_subscription(JointState, '/joint_states',
+                                 self.on_joint_state, 10)
 
         self.arm = ActionClient(
             self, FollowJointTrajectory,
@@ -121,7 +125,7 @@ class Calibration(Node):
         self.gripper = ActionClient(
             self, GripperCommand, '/gripper_controller/gripper_cmd')
         self.poses = (EYE_IN_HAND_POSES if eye_in_hand
-                      else eye_to_hand_poses(self.arm_id))
+                      else eye_to_hand_poses())
         self.get_logger().info(
             f'{self.mode}, marker={self.marker_id}, size={self.marker_size} m')
 
@@ -129,12 +133,36 @@ class Calibration(Node):
         if self.camera_matrix is None:
             self.camera_matrix = np.asarray(message.k).reshape(3, 3)
             self.dist_coeffs = np.asarray(message.d)
+            self.camera_frame = message.header.frame_id
 
     def on_image(self, message):
         if self.camera_matrix is None:
             return
         image = self.bridge.imgmsg_to_cv2(message, 'bgr8')
         self.tracker.update(image, self.camera_matrix, self.dist_coeffs)
+
+    def on_joint_state(self, message):
+        positions = dict(zip(message.name, message.position))
+        if all(name in positions for name in JOINTS):
+            self.joint_positions = np.asarray(
+                [positions[name] for name in JOINTS])
+
+    def wait_until_reached(self, target, timeout=3., tolerance=.03):
+        target = np.asarray(target)
+        end = time.monotonic() + timeout
+        while rclpy.ok() and time.monotonic() < end:
+            rclpy.spin_once(self, timeout_sec=.05)
+            if (self.joint_positions is not None and
+                    np.max(np.abs(self.joint_positions - target)) <= tolerance):
+                return True
+        if self.joint_positions is None:
+            self.get_logger().error('No /joint_states feedback received')
+        else:
+            error = np.abs(self.joint_positions - target)
+            self.get_logger().error(
+                f'Robot did not reach target; max joint error='
+                f'{np.max(error):.3f} rad, errors={np.round(error, 3)}')
+        return False
 
     def wait(self, future, timeout):
         start = time.monotonic()
@@ -183,7 +211,8 @@ class Calibration(Node):
         point = trajectory.joint_trajectory.points[-1]
         timeout = point.time_from_start.sec + point.time_from_start.nanosec / 1e9 + 15
         result = self.wait(handle.get_result_async(), timeout)
-        return bool(result and result.result.error_code.val == 1)
+        return bool(result and result.result.error_code.val == 1 and
+                    self.wait_until_reached(point.positions))
 
     def move(self, positions, duration=4.):
         trajectory = self.plan_to(positions)
@@ -200,7 +229,8 @@ class Calibration(Node):
         if not handle or not handle.accepted:
             return False
         result = self.wait(handle.get_result_async(), duration + 10)
-        return bool(result and result.result.error_code == 0)
+        return bool(result and result.result.error_code == 0 and
+                    self.wait_until_reached(positions))
 
     def open_gripper(self):
         if self.mode != 'eye_in_hand' or not self.gripper.wait_for_server(5):
@@ -258,15 +288,19 @@ class Calibration(Node):
             return False
         method, result, all_results = solve(self.data, self.mode, self.method)
         for name, item in all_results.items():
+            quality = item.get('quality', {})
             self.get_logger().info(
-                f'{name}: t={np.round(item["pose"][:3, 3], 4)}')
+                f'{name}: t={np.round(item["pose"][:3, 3], 4)}, '
+                f't_rmse={quality.get("translation_rmse_m", float("nan")):.6f} m, '
+                f'r_rmse={quality.get("rotation_rmse_deg", float("nan")):.3f} deg')
+        self.get_logger().info(f'Selected calibration method: {method}')
         path = save_result(
             self.output, mode=self.mode, pose=result['pose'],
             samples=len(self.data), method=method,
             dictionary=self.tracker.dictionary_name,
             marker_id=self.marker_id, marker_size=self.marker_size,
-            quality=result.get('quality'),
-            arm_id=self.arm_id if self.mode == 'eye_to_hand' else '')
+            robot_model=self.robot_model, quality=result.get('quality'),
+            camera_frame=self.camera_frame or 'camera_color_optical_frame')
         self.get_logger().info(f'Saved {path}')
         return True
 

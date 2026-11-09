@@ -1,49 +1,46 @@
 hand_eye_calibration:
+  type: eye_in_hand
+  frame_id: tool0
+  child_frame_id: camera_color_optical_frame
+  robot_model: alicia_m_v1_2_follower
+  date: '2026-11-09 12:31:10'
+  samples_count: 18
+  calibration_method: daniilidis
   aruco_dictionary: DICT_4X4_50
   aruco_marker_id: 0
   aruco_marker_size: 0.0765
-  calibration_method: horaud
-  child_frame_id: camera_color_optical_frame
-  date: '2026-11-09 11:38:00'
-  frame_id: tool0
-  robot_model: alicia_m_v1_2_follower
-  quality:
-    consistency_score: 0.003068
-    retained_samples: 15
-    rejected_samples: []
-    rotation_rmse_deg: 1.561
-    translation_rmse_m: 0.001706
-  samples_count: 15
   transform:
+    translation:
+      x: -0.06662407977459057
+      y: 0.011137876800693126
+      z: -0.06719529768737954
+    rotation:
+      quaternion:
+        x: -0.189855482978357
+        y: 0.19825588246757436
+        z: -0.6791986683740706
+        w: 0.6806898482634712
+      euler_xyz_deg:
+        roll: -31.857852762483493
+        pitch: 0.6877005492117678
+        yaw: -90.07061940890463
     matrix_4x4:
-    - - 0.01596649
-      - 0.85220657
-      - 0.52296178
-      - -0.0645219673
-    - - -0.9998599
-      - 0.01623731
-      - 0.00406666
-      - 0.0078139188
-    - - -0.00502586
-      - -0.52295344
-      - 0.85234643
-      - -0.0737227458
+    - - -0.0012324521082150985
+      - 0.8493673443942318
+      - 0.5278007155532197
+      - -0.06662407977459057
+    - - -0.9999272096709586
+      - 0.005288128923887858
+      - -0.010844862937554045
+      - 0.011137876800693126
+    - - -0.01200235066355515
+      - -0.5277756625396572
+      - 0.8492990013001163
+      - -0.06719529768737954
     - - 0.0
       - 0.0
       - 0.0
       - 1.0
-    rotation:
-      euler_xyz_deg:
-        pitch: 0.28796187
-        roll: -31.53101593
-        yaw: -89.08513711
-      quaternion:
-        w: 0.6863946
-        x: -0.1919523
-        y: 0.1923047
-        z: -0.6745633
-    translation:
-      x: -0.0645219673
-      y: 0.0078139188
-      z: -0.0737227458
-  type: eye_in_hand
+  quality:
+    translation_rmse_m: 0.002167232794669198
+    rotation_rmse_deg: 1.3060809912222102

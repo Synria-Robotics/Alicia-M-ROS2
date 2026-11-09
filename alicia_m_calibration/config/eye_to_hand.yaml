@@ -3,12 +3,12 @@
     mode: eye_to_hand
     aruco_dict: DICT_4X4_50
     marker_id: 0
-    marker_size: 0.05
-    camera_topic: /cam1/cam1/color/image_raw
-    camera_info_topic: /cam1/cam1/color/camera_info
+    marker_size: 0.0765
+    camera_topic: /camera/cam1/color/image_raw
+    camera_info_topic: /camera/cam1/color/camera_info
     base_link: base_link
     tool_link: tool0
+    robot_model: alicia_m_v1_2_follower
     samples: 18
     method: park
     output: eye_to_hand_calibration_result.yaml
-    arm_id: master

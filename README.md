@@ -92,44 +92,65 @@ ros2 launch alicia_m_bringup moveit_sim.launch.py
 
 ## RealSense D405 手眼标定
 
-启动相机：
+标定参数位于 `alicia_m_calibration/config/`。固定外部相机的默认参数为
+`marker_id=0`、`marker_size=0.0765 m`、18 个样本和 Park 方法。
+
+以 PV 模式启动机械臂与 MoveIt：
 
 ```bash
-ros2 launch realsense2_camera rs_launch.py enable_color:=true enable_depth:=false
+ros2 launch alicia_m_bringup moveit_hardware.launch.py \
+  serial_port:=/dev/ttyACM3 control_mode:=pv
 ```
 
-保持相机和硬件 MoveIt 运行，在另一个终端执行：
+启动固定的 D405；eye-to-hand 使用相机名称 `cam1`：
 
 ```bash
-source /opt/ros/jazzy/setup.bash
-source install/setup.bash
+ros2 launch realsense2_camera rs_launch.py \
+  camera_name:=cam1 enable_depth:=false enable_infra1:=false enable_infra2:=false
+```
+
+运行标定：
+
+```bash
+# 相机安装在末端
 ros2 launch alicia_m_calibration calibrate.launch.py mode:=eye_in_hand
-```
 
-固定外部相机（eye-to-hand）使用：
-
-```bash
+# 相机固定在机械臂外部
 ros2 launch alicia_m_calibration calibrate.launch.py mode:=eye_to_hand
 ```
 
-两种模式的相机、ArUco 和采样参数分别位于
-`config/eye_in_hand.yaml` 与 `config/eye_to_hand.yaml`。
+Eye-to-hand 应使用具有充分旋转变化、且 marker 始终完整位于画面内的机器人姿态。
+标定程序会等待关节实际到达目标后再采样，并输出各求解方法的平移与旋转残差。
 
-标定结果保存到：
+### 在 MoveIt 中验证 eye-to-hand
 
-```text
-alicia_m_calibration/config/hand_eye_calibration_result.yaml
-```
-
-验证结果：
+以下命令一次启动 `/dev/ttyACM3` PV 硬件、MoveIt、RViz、D405 `cam1` 和验证节点：
 
 ```bash
-ros2 launch alicia_m_calibration verify.launch.py \
-  mode:=eye_in_hand \
-  result:="$PWD/alicia_m_calibration/config/hand_eye_calibration_result.yaml"
-
-ros2 run tf2_ros tf2_echo base_link aruco_marker_frame
+ros2 launch alicia_m_calibration verify_calibration.launch.py
 ```
 
-当前实机配置中，机械臂底座和 ArUco 位于同一桌面，验证得到的标记高度约为
-`z = 0.002 m`。
+若硬件或相机已经启动，可分别设置 `start_robot:=false` 或
+`start_camera:=false`。仅启动验证节点：
+
+```bash
+ros2 launch alicia_m_calibration verify_calibration.launch.py \
+  start_robot:=false start_camera:=false
+```
+
+验证节点组合标定的 `base_link -> camera optical frame` 与实时检测的
+`camera optical frame -> ArUco`，发布：
+
+- TF：`base_link -> aruco_marker_frame`
+- MoveIt CollisionObject：`detected_aruco_marker`
+- Topic：`/collision_object`
+
+检查实时坐标和 MoveIt 对象：
+
+```bash
+ros2 run tf2_ros tf2_echo base_link aruco_marker_frame
+ros2 topic echo /collision_object moveit_msgs/msg/CollisionObject --once
+```
+
+当前桌面布局下，marker 的期望位置约为
+`[x, y, z] = [0.300, -0.005, 0.002] m`，数毫米误差属于正常范围。

@@ -8,6 +8,7 @@
     camera_info_topic: /camera/camera/color/camera_info
     base_link: base_link
     tool_link: tool0
-    samples: 15
-    method: horaud
+    robot_model: alicia_m_v1_2_follower
+    samples: 18
+    method: auto
     output: hand_eye_calibration_result.yaml

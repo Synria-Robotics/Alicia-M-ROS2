@@ -31,12 +31,12 @@ arm_controller:
     constraints:
       goal_time: 2.0
       stopped_velocity_tolerance: 0.05
-      joint1: {trajectory: 0.20, goal: 0.04}
-      joint2: {trajectory: 0.20, goal: 0.04}
-      joint3: {trajectory: 0.20, goal: 0.04}
-      joint4: {trajectory: 0.20, goal: 0.04}
-      joint5: {trajectory: 0.20, goal: 0.04}
-      joint6: {trajectory: 0.20, goal: 0.04}
+      joint1: {trajectory: 0.1, goal: 0.03}
+      joint2: {trajectory: 0.1, goal: 0.03}
+      joint3: {trajectory: 0.1, goal: 0.03}
+      joint4: {trajectory: 0.1, goal: 0.03}
+      joint5: {trajectory: 0.1, goal: 0.03}
+      joint6: {trajectory: 0.1, goal: 0.03}
 gripper_controller:
   ros__parameters:
     joint: left_finger

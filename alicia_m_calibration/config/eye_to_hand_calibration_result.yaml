@@ -1,0 +1,46 @@
+eye_to_hand_calibration:
+  type: eye_to_hand
+  frame_id: base_link
+  child_frame_id: cam1_color_optical_frame
+  robot_model: alicia_m_v1_2_follower
+  date: '2026-11-09 14:54:05'
+  samples_count: 18
+  calibration_method: daniilidis
+  aruco_dictionary: DICT_4X4_50
+  aruco_marker_id: 0
+  aruco_marker_size: 0.0765
+  transform:
+    translation:
+      x: 0.32353573762107635
+      y: 0.24670112144996856
+      z: 0.47487881470484006
+    rotation:
+      quaternion:
+        x: 0.6944049976229295
+        y: 0.7195253402282503
+        z: 0.005790719993196573
+        w: 0.0071729776021109415
+      euler_xyz_deg:
+        roll: 178.95171006748598
+        pitch: 0.13063841484149835
+        yaw: 92.03446132912099
+    matrix_4x4:
+    - - -0.03550049533723776
+      - 0.9992009109320488
+      - 0.01836448810543842
+      - 0.32353573762107635
+    - - 0.9993670577512939
+      - 0.035536333676519316
+      - -0.0016287634429437599
+      - 0.24670112144996856
+    - - -0.0022800684929955538
+      - 0.01829504253602894
+      - -0.99983003190856
+      - 0.47487881470484006
+    - - 0.0
+      - 0.0
+      - 0.0
+      - 1.0
+  quality:
+    translation_rmse_m: 0.0008420747696194619
+    rotation_rmse_deg: 0.6970713367950508
