@@ -140,20 +140,44 @@ ros2 launch alicia_m_calibration calibrate.launch.py \
 
 当前标定板参数为 `marker_id=0`、`marker_size=0.0765 m`。Eye-to-hand 推荐至少采集 18 个有效样本，并使用具有充分旋转变化且能让 marker 完整留在画面内的机器人姿态。
 
-### 在 MoveIt 中验证 eye-to-hand 结果
+### 在 MoveIt 中验证 eye-to-hand 结果（一条命令）
 
-保持机械臂、MoveIt 和 D405 节点运行，在新终端执行：
+下面一条命令会同时启动 `/dev/ttyACM3` PV 硬件、MoveIt、RViz、RealSense D405 `cam1` 和验证节点，不需要分别打开多个终端：
 
 ```bash
 cd /home/ubuntu/Alicia/Alicia-M-ROS2
 source /opt/ros/humble/setup.bash
 source install/setup.bash
 
-ros2 launch alicia_m_calibration verify.launch.py \
-  mode:=eye_to_hand \
-  result:=eye_to_hand_calibration_result.yaml \
-  marker_id:=0 \
-  marker_size:=0.0765
+ros2 launch alicia_m_calibration verify_calibration.launch.py
+```
+
+默认参数已经是：
+
+```text
+mode:=eye_to_hand
+serial_port:=/dev/ttyACM3
+control_mode:=pv
+marker_id:=0
+marker_size:=0.0765
+use_rviz:=true
+```
+
+如果硬件/MoveIt 或相机已经在运行，可以避免重复启动：
+
+```bash
+# 已经启动硬件、MoveIt 和 RViz
+ros2 launch alicia_m_calibration verify_calibration.launch.py \
+  start_robot:=false
+
+# 已经启动 D405
+ros2 launch alicia_m_calibration verify_calibration.launch.py \
+  start_camera:=false
+
+# 两者都已启动时，仅运行验证节点
+ros2 launch alicia_m_calibration verify_calibration.launch.py \
+  start_robot:=false \
+  start_camera:=false
 ```
 
 验证节点会对每一张新图像执行以下转换：
@@ -192,11 +216,9 @@ ros2 run tf2_ros tf2_echo base_link aruco_marker_frame
 
 URDF 文件中保留了一段被注释的 `marker` link/joint，仅用于人工核对实体 marker 的预定义参考位姿。它不会进入运行时 robot model，验证节点也不会使用该参考位姿修正标定结果或在项目内计算误差。如需做绝对精度测试，可在临时测试环境中启用该参考 frame，再将其与 `aruco_marker_frame` 比较；不要把误差计算加入运行代码。
 
-Eye-in-hand 结果可用相同节点验证：
+Eye-in-hand 结果也可以一条命令验证；launch 会自动将相机名切换为 `camera`：
 
 ```bash
-ros2 launch alicia_m_calibration verify.launch.py \
-  mode:=eye_in_hand \
-  marker_id:=0 \
-  marker_size:=0.0765
+ros2 launch alicia_m_calibration verify_calibration.launch.py \
+  mode:=eye_in_hand
 ```
