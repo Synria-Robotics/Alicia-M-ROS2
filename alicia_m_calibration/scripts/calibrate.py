@@ -16,7 +16,6 @@ from rclpy.action import ActionClient
 from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
-from scipy.spatial.transform import Rotation
 from sensor_msgs.msg import CameraInfo, Image, JointState
 from tf2_ros import Buffer, TransformListener
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
@@ -295,30 +294,6 @@ class Calibration(Node):
                 f't_rmse={quality.get("translation_rmse_m", float("nan")):.6f} m, '
                 f'r_rmse={quality.get("rotation_rmse_deg", float("nan")):.3f} deg')
         self.get_logger().info(f'Selected calibration method: {method}')
-        if self.mode == 'eye_to_hand':
-            # URDF reference is link6->marker.  tool0 is translated +0.1375 m
-            # along link6 Z with no rotation, hence tool0->marker below.
-            expected_marker = transform(
-                Rotation.from_euler(
-                    'xyz', [-1.5708, 0., 1.5708]).as_matrix(),
-                [-0.02365, -0.0005, 0.10148 - 0.1375])
-            estimated_marker = result['invariant_pose']
-            translation_error = np.linalg.norm(
-                estimated_marker[:3, 3] - expected_marker[:3, 3])
-            rotation_error = np.degrees((
-                Rotation.from_matrix(expected_marker[:3, :3]).inv() *
-                Rotation.from_matrix(estimated_marker[:3, :3])).magnitude())
-            result['quality']['marker_translation_error_m'] = float(
-                translation_error)
-            result['quality']['marker_rotation_error_deg'] = float(
-                rotation_error)
-            result['quality']['estimated_tool_to_marker_translation_m'] = list(
-                map(float, estimated_marker[:3, 3]))
-            self.get_logger().info(
-                f'URDF marker verification: estimated tool0->marker='
-                f'{np.round(estimated_marker[:3, 3], 4)} m, '
-                f'translation_error={translation_error * 1000:.1f} mm, '
-                f'rotation_error={rotation_error:.2f} deg')
         path = save_result(
             self.output, mode=self.mode, pose=result['pose'],
             samples=len(self.data), method=method,
