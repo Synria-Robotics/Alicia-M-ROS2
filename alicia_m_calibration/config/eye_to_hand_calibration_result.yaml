@@ -1,0 +1,52 @@
+eye_to_hand_calibration:
+  type: eye_to_hand
+  frame_id: base_link
+  child_frame_id: cam1_color_optical_frame
+  robot_model: alicia_m_v1_2_follower
+  date: '2026-11-09 14:43:37'
+  samples_count: 18
+  calibration_method: park
+  aruco_dictionary: DICT_4X4_50
+  aruco_marker_id: 0
+  aruco_marker_size: 0.0765
+  transform:
+    translation:
+      x: 0.31497408523274467
+      y: 0.24935405694880586
+      z: 0.4837221451673008
+    rotation:
+      quaternion:
+        x: 0.7029203101716591
+        y: 0.710805698070934
+        z: 0.0060796053440885225
+        w: 0.024926602996216376
+      euler_xyz_deg:
+        roll: 177.4952926038256
+        pitch: 1.5408111657964318
+        yaw: 90.60546865429126
+    matrix_4x4:
+    - - -0.010563404022493816
+      - 0.9989764357020348
+      - 0.04398289903490115
+      - 0.31497408523274467
+    - - 0.9995826113371786
+      - 0.011732151894077532
+      - -0.02639999477805104
+      - 0.24935405694880586
+    - - -0.026888986738149278
+      - 0.043685667260453524
+      - -0.9986834057238584
+      - 0.4837221451673008
+    - - 0.0
+      - 0.0
+      - 0.0
+      - 1.0
+  quality:
+    translation_rmse_m: 0.0018948828753117808
+    rotation_rmse_deg: 0.9853594754225522
+    marker_translation_error_m: 0.014110654455232713
+    marker_rotation_error_deg: 3.9663681349672273
+    estimated_tool_to_marker_translation_m:
+    - -0.03616377716105849
+    - -0.00048068463101292344
+    - -0.0294996029848735

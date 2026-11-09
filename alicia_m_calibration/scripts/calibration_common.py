@@ -174,31 +174,38 @@ def solve(samples, mode, requested_method):
                 method=method)
             pose = transform(rotation, translation)
             item = {'pose': pose}
-            if mode == 'eye_in_hand':
-                boards = [mount @ pose @ target
-                          for mount, target in samples]
-                xyz = np.array([board[:3, 3] for board in boards])
-                t_rmse = np.sqrt(np.mean(np.sum(
-                    (xyz - xyz.mean(axis=0)) ** 2, axis=1)))
-                rotations = Rotation.from_matrix(
-                    [board[:3, :3] for board in boards])
-                r_error = (rotations.mean().inv() * rotations).magnitude()
-                r_rmse = np.sqrt(np.mean(r_error ** 2))
-                item['quality'] = {
-                    'translation_rmse_m': float(t_rmse),
-                    'rotation_rmse_deg': float(np.degrees(r_rmse)),
-                }
+            # The invariant pose is base->target for eye-in-hand and
+            # tool->target for eye-to-hand.  Measuring its dispersion gives
+            # both modes the same meaningful residual quality metric.
+            invariants = (
+                [mount @ pose @ target for mount, target in samples]
+                if mode == 'eye_in_hand' else
+                [np.linalg.inv(mount) @ pose @ target
+                 for mount, target in samples]
+            )
+            xyz = np.array([value[:3, 3] for value in invariants])
+            t_rmse = np.sqrt(np.mean(np.sum(
+                (xyz - xyz.mean(axis=0)) ** 2, axis=1)))
+            rotations = Rotation.from_matrix(
+                [value[:3, :3] for value in invariants])
+            mean_rotation = rotations.mean()
+            r_error = (mean_rotation.inv() * rotations).magnitude()
+            r_rmse = np.sqrt(np.mean(r_error ** 2))
+            item['quality'] = {
+                'translation_rmse_m': float(t_rmse),
+                'rotation_rmse_deg': float(np.degrees(r_rmse)),
+            }
+            item['invariant_pose'] = transform(
+                mean_rotation.as_matrix(), xyz.mean(axis=0))
             results[name] = item
         except cv2.error:
             continue
     if not results:
         raise RuntimeError('all calibration methods failed')
     if requested_method == 'auto':
-        requested_method = (
-            min(results, key=lambda name: (
-                results[name]['quality']['translation_rmse_m']))
-            if mode == 'eye_in_hand' else next(iter(results))
-        )
+        requested_method = min(
+            results,
+            key=lambda name: results[name]['quality']['translation_rmse_m'])
     method = requested_method if requested_method in results else next(iter(results))
     return method, results[method], results
 
@@ -213,7 +220,8 @@ def package_config(filename):
 
 
 def save_result(filename, *, mode, pose, samples, method, dictionary,
-                marker_id, marker_size, robot_model, quality=None, arm_id=''):
+                marker_id, marker_size, robot_model, quality=None, arm_id='',
+                camera_frame='camera_color_optical_frame'):
     rotation = Rotation.from_matrix(pose[:3, :3])
     quaternion = rotation.as_quat()
     euler = rotation.as_euler('xyz', degrees=True)
@@ -222,7 +230,7 @@ def save_result(filename, *, mode, pose, samples, method, dictionary,
             'hand_eye_calibration', 'tool0', 'camera_color_optical_frame')
     else:
         key, parent, child = (
-            'eye_to_hand_calibration', 'base_link', 'camera_color_optical_frame')
+            'eye_to_hand_calibration', 'base_link', camera_frame)
     record = {
         'type': mode,
         'frame_id': parent,

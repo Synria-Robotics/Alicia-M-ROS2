@@ -151,6 +151,24 @@ hardware_interface::CallbackReturn AliciaHardwareInterface::on_activate(
   double grip_pct = finger_pos_to_percent(gripper_command_);
   uint16_t grip_hw = gripper_percent_to_hw(grip_pct);
 
+  // 固件会保留上一次使用的控制模式。必须在发送控制帧前显式同步，
+  // 否则例如固件处于 MIT 而本驱动发送 PV 时，命令会被静默忽略。
+  // 顺序与 Alicia-M SDK 一致：失能 -> 切模式 -> 使能 -> 首条控制指令。
+  auto disable_frame = build_enable_frame(false, control_aim_);
+  serial_.write(disable_frame);
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  const uint32_t requested_mode = control_mode_ == "mit" ? MODE_MIT : MODE_PV;
+  auto mode_frame = build_mode_switch_frame(requested_mode, control_aim_);
+  serial_.flush_input();
+  rx_accum_.clear();
+  serial_.write(mode_frame);
+  std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+  auto enable_frame = build_enable_frame(true, control_aim_);
+  serial_.write(enable_frame);
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
   if (control_mode_ == "mit") {
     auto mit_init = build_mit_init_frame(
       hw_commands_.data(), grip_hw, mit_kp_, mit_kd_, control_aim_);
@@ -167,10 +185,6 @@ hardware_interface::CallbackReturn AliciaHardwareInterface::on_activate(
       hw_commands_.data(), grip_hw, control_aim_);
     serial_.write(frame);
   } else {
-    auto enable_frame = build_enable_frame(true, control_aim_);
-    serial_.write(enable_frame);
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
-
     double speeds[NUM_JOINTS];
     for (size_t i = 0; i < NUM_JOINTS; ++i) {
       speeds[i] = default_speed_;
