@@ -1,0 +1,14 @@
+/**:
+  ros__parameters:
+    mode: eye_in_hand
+    aruco_dict: DICT_4X4_50
+    marker_id: 0
+    marker_size: 0.0765
+    camera_topic: /camera/camera/color/image_raw
+    camera_info_topic: /camera/camera/color/camera_info
+    base_link: base_link
+    tool_link: tool0
+    robot_model: alicia_m_v1_1_follower
+    samples: 15
+    method: horaud
+    output: hand_eye_calibration_result.yaml

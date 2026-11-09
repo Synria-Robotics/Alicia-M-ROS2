@@ -7,17 +7,16 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
-find_package(ament_cmake_python REQUIRED)
 find_package(rclpy REQUIRED)
 
-# Install Python modules
-ament_python_install_package(${PROJECT_NAME})
-
-# Install Python scripts
 install(PROGRAMS
-  scripts/hand_eye_calibration.py
-  scripts/eye_to_hand_calibration.py
-  scripts/aruco_detector.py
+  scripts/calibrate.py
+  scripts/verify.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(FILES
+  scripts/calibration_common.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -26,6 +25,8 @@ install(DIRECTORY
   launch
   config
   DESTINATION share/${PROJECT_NAME}
+  PATTERN "__pycache__" EXCLUDE
+  PATTERN "__pycache__/*" EXCLUDE
 )
 
 if(BUILD_TESTING)

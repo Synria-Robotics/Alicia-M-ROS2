@@ -12,6 +12,7 @@
 - MoveIt2 规划与执行支持
 - 机械臂模型显示与 RViz 可视化
 - 手眼标定（眼在手上，适配intel realsense d405）与标定结果验证
+- 固定外部相机（eye-to-hand）标定
 - Python 脚本示例（如 Pick and Place）
 - (待开发)物块分拣工作流（2D抓取）
 - (待开发)基于 GraspGen（NVIDIA 2025）的 6D 抓取工作流。
@@ -86,4 +87,22 @@ ros2 launch alicia_m_bringup hardware.launch.py
 
 ```bash
 ros2 launch alicia_m_bringup moveit_sim.launch.py
+```
+
+## 手眼标定
+
+标定参数位于 `alicia_m_calibration/config/`。启动相机和硬件 MoveIt 后运行：
+
+```bash
+# Eye-in-hand：相机安装在机械臂末端
+ros2 launch alicia_m_calibration calibrate.launch.py mode:=eye_in_hand
+
+# Eye-to-hand：相机固定在机械臂外部
+ros2 launch alicia_m_calibration calibrate.launch.py mode:=eye_to_hand
+```
+
+验证标定结果：
+
+```bash
+ros2 launch alicia_m_calibration verify.launch.py mode:=eye_in_hand
 ```
