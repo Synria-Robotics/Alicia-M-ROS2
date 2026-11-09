@@ -91,7 +91,33 @@ ros2 launch alicia_m_bringup moveit_sim.launch.py
 
 ## 手眼标定
 
-标定参数位于 `alicia_m_calibration/config/`。启动相机和硬件 MoveIt 后运行：
+标定参数位于 `alicia_m_calibration/config/`。以下命令均假定工作区已经编译，并且每个新终端都已加载环境：
+
+```bash
+cd /home/ubuntu/Alicia/Alicia-M-ROS2
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+```
+
+先使用实际串口和 PV 模式启动机械臂、MoveIt 与 RViz：
+
+```bash
+ros2 launch alicia_m_bringup moveit_hardware.launch.py \
+  serial_port:=/dev/ttyACM3 \
+  control_mode:=pv
+```
+
+在另一个终端启动 RealSense D405。固定外部相机使用 `cam1`，对应图像 topic 为 `/camera/cam1/color/image_raw`：
+
+```bash
+ros2 launch realsense2_camera rs_launch.py \
+  camera_name:=cam1 \
+  enable_depth:=false \
+  enable_infra1:=false \
+  enable_infra2:=false
+```
+
+然后在第三个终端运行标定：
 
 ```bash
 # Eye-in-hand：相机安装在机械臂末端
@@ -112,10 +138,65 @@ ros2 launch alicia_m_calibration calibrate.launch.py \
   calibration_method:=daniilidis
 ```
 
-对于当前 76.5 mm 标定板，默认配置使用 18 个有效样本并自动选择目标漂移最小的求解方法。显式传入上述参数仍可复现实验性配置。
+当前标定板参数为 `marker_id=0`、`marker_size=0.0765 m`。Eye-to-hand 推荐至少采集 18 个有效样本，并使用具有充分旋转变化且能让 marker 完整留在画面内的机器人姿态。
 
-验证标定结果：
+### 在 MoveIt 中验证 eye-to-hand 结果
+
+保持机械臂、MoveIt 和 D405 节点运行，在新终端执行：
 
 ```bash
-ros2 launch alicia_m_calibration verify.launch.py mode:=eye_in_hand
+cd /home/ubuntu/Alicia/Alicia-M-ROS2
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+
+ros2 launch alicia_m_calibration verify.launch.py \
+  mode:=eye_to_hand \
+  result:=eye_to_hand_calibration_result.yaml \
+  marker_id:=0 \
+  marker_size:=0.0765
+```
+
+验证节点会对每一张新图像执行以下转换：
+
+```text
+base_link -> camera optical frame（标定结果）
+camera optical frame -> ArUco（当前图像检测）
+= base_link -> aruco_marker_frame
+```
+
+检测结果会同时发布为：
+
+- TF：`base_link -> aruco_marker_frame`
+- MoveIt world object topic：`/collision_object`
+- CollisionObject ID：`detected_aruco_marker`
+- 几何尺寸：`0.0765 x 0.0765 x 0.002 m`
+
+在 RViz 中将 Fixed Frame 设置为 `base_link`，并在 MotionPlanning display 中启用 Scene Geometry，即可看到最新检测到的 marker。也可以用命令行确认发布内容：
+
+```bash
+ros2 topic echo /collision_object moveit_msgs/msg/CollisionObject --once
+```
+
+确认 MoveIt planning scene 已经接收该对象：
+
+```bash
+ros2 service call /get_planning_scene moveit_msgs/srv/GetPlanningScene \
+  "{components: {components: 24}}" | grep detected_aruco_marker
+```
+
+查看实时检测坐标：
+
+```bash
+ros2 run tf2_ros tf2_echo base_link aruco_marker_frame
+```
+
+URDF 文件中保留了一段被注释的 `marker` link/joint，仅用于人工核对实体 marker 的预定义参考位姿。它不会进入运行时 robot model，验证节点也不会使用该参考位姿修正标定结果或在项目内计算误差。如需做绝对精度测试，可在临时测试环境中启用该参考 frame，再将其与 `aruco_marker_frame` 比较；不要把误差计算加入运行代码。
+
+Eye-in-hand 结果可用相同节点验证：
+
+```bash
+ros2 launch alicia_m_calibration verify.launch.py \
+  mode:=eye_in_hand \
+  marker_id:=0 \
+  marker_size:=0.0765
 ```
