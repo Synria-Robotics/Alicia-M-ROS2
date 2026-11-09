@@ -595,7 +595,7 @@
       xyz="0 0 0" />
   </joint>
 
-  <!-- <link
+  <link
     name="marker">
     <visual>
       <origin
@@ -623,5 +623,5 @@
       link="marker" />
     <axis
       xyz="0 0 0" />
-  </joint> -->
+  </joint>
 </robot>
