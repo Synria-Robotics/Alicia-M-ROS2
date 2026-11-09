@@ -9,6 +9,6 @@
     base_link: base_link
     tool_link: tool0
     robot_model: alicia_m_v1_2_follower
-    samples: 15
-    method: horaud
+    samples: 18
+    method: auto
     output: hand_eye_calibration_result.yaml

@@ -259,8 +259,12 @@ class Calibration(Node):
             return False
         method, result, all_results = solve(self.data, self.mode, self.method)
         for name, item in all_results.items():
+            quality = item.get('quality', {})
             self.get_logger().info(
-                f'{name}: t={np.round(item["pose"][:3, 3], 4)}')
+                f'{name}: t={np.round(item["pose"][:3, 3], 4)}, '
+                f't_rmse={quality.get("translation_rmse_m", float("nan")):.6f} m, '
+                f'r_rmse={quality.get("rotation_rmse_deg", float("nan")):.3f} deg')
+        self.get_logger().info(f'Selected calibration method: {method}')
         path = save_result(
             self.output, mode=self.mode, pose=result['pose'],
             samples=len(self.data), method=method,

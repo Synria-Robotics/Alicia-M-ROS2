@@ -101,6 +101,19 @@ ros2 launch alicia_m_calibration calibrate.launch.py mode:=eye_in_hand
 ros2 launch alicia_m_calibration calibrate.launch.py mode:=eye_to_hand
 ```
 
+标定板尺寸、ID、最少样本数和求解方法可在启动时覆盖：
+
+```bash
+ros2 launch alicia_m_calibration calibrate.launch.py \
+  mode:=eye_in_hand \
+  marker_size:=0.0765 \
+  marker_id:=0 \
+  min_samples:=15 \
+  calibration_method:=daniilidis
+```
+
+对于当前 76.5 mm 标定板，默认配置使用 18 个有效样本并自动选择目标漂移最小的求解方法。显式传入上述参数仍可复现实验性配置。
+
 验证标定结果：
 
 ```bash

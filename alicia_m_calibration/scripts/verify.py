@@ -21,6 +21,8 @@ class Verification(Node):
         super().__init__('calibration_verification')
         self.declare_parameter('result', '')
         self.declare_parameter('output', 'hand_eye_calibration_result.yaml')
+        self.declare_parameter('marker_size', 0.0)
+        self.declare_parameter('marker_id', -1)
         self.declare_parameter('camera_topic', '/camera/camera/color/image_raw')
         self.declare_parameter(
             'camera_info_topic', '/camera/camera/color/camera_info')
@@ -30,10 +32,17 @@ class Verification(Node):
         self.camera_matrix = None
         self.dist_coeffs = None
         self.bridge = CvBridge()
+        marker_size = self.get_parameter('marker_size').value
+        marker_id = self.get_parameter('marker_id').value
+        marker_size = (marker_size if marker_size > 0 else
+                       self.record.get('aruco_marker_size', .0765))
+        marker_id = (marker_id if marker_id >= 0 else
+                     self.record.get('aruco_marker_id', 0))
         self.tracker = ArucoTracker(
             self.record.get('aruco_dictionary', 'DICT_4X4_50'),
-            self.record.get('aruco_marker_id', 0),
-            self.record.get('aruco_marker_size', .0765), min_frames=1)
+            marker_id, marker_size, min_frames=1)
+        self.get_logger().info(
+            f'Verification marker={marker_id}, size={marker_size} m')
         self.buffer = Buffer()
         self.listener = TransformListener(self.buffer, self)
         self.static_broadcaster = StaticTransformBroadcaster(self)
