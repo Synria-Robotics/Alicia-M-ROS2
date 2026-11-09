@@ -88,7 +88,7 @@ class Calibration(Node):
                                   else '/cam1/cam1/color/camera_info'),
             'base_link': 'base_link',
             'tool_link': 'tool0',
-            'robot_model': 'alicia_m_v1_1_follower',
+            'robot_model': 'alicia_m_v1_2_follower',
             'samples': 15 if eye_in_hand else 18,
             'method': 'horaud' if eye_in_hand else 'park',
             'output': ('hand_eye_calibration_result.yaml' if eye_in_hand

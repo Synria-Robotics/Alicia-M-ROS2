@@ -48,7 +48,7 @@ def generate_launch_description():
         FindExecutable(name='xacro'), ' ',
         PathJoinSubstitution([
             moveit_config_share, 'config',
-            'alicia_m_v1_1_follower.urdf.xacro'
+            'alicia_m_v1_2_follower.urdf.xacro'
         ]),
         ' ros2_control_plugin:=mock_components/GenericSystem',
     ])
@@ -60,7 +60,7 @@ def generate_launch_description():
         FindExecutable(name='xacro'), ' ',
         PathJoinSubstitution([
             moveit_config_share, 'config',
-            'alicia_m_v1_1_follower.srdf'
+            'alicia_m_v1_2_follower.srdf'
         ]),
     ])
     robot_description_semantic = {

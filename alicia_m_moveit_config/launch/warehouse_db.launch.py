@@ -3,5 +3,5 @@ from moveit_configs_utils.launches import generate_warehouse_db_launch
 
 
 def generate_launch_description():
-    moveit_config = MoveItConfigsBuilder("alicia_m_v1_1_follower", package_name="alicia_m_moveit_config").to_moveit_configs()
+    moveit_config = MoveItConfigsBuilder("alicia_m_v1_2_follower", package_name="alicia_m_moveit_config").to_moveit_configs()
     return generate_warehouse_db_launch(moveit_config)

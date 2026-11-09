@@ -71,7 +71,7 @@ def generate_launch_description():
         FindExecutable(name='xacro'), ' ',
         PathJoinSubstitution([
             moveit_config_pkg, 'config',
-            'alicia_m_v1_1_follower.urdf.xacro'
+            'alicia_m_v1_2_follower.urdf.xacro'
         ]),
         ' ros2_control_plugin:=alicia_m_driver/AliciaHardwareInterface',
         ' serial_port:=', serial_port,

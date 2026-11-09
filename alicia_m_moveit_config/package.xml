@@ -4,7 +4,7 @@
   <name>alicia_m_moveit_config</name>
   <version>0.3.0</version>
   <description>
-     An automatically generated package with all the configuration and launch files for using the alicia_m_v1_1_follower with the MoveIt Motion Planning Framework
+     MoveIt configuration for the Alicia-M v1.2 follower.
   </description>
   <maintainer email="support@synriarobotics.ai">Synria Robotics</maintainer>
 

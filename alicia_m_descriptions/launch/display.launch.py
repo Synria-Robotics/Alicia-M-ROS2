@@ -86,8 +86,8 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
             'robot_version',
-            default_value='v1_1',
-            description='Robot version: v1_1'
+            default_value='v1_2',
+            description='Robot version: v1_2'
         ),
         DeclareLaunchArgument(
             'robot_type',
