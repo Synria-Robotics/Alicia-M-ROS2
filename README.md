@@ -103,9 +103,17 @@ ros2 launch realsense2_camera rs_launch.py enable_color:=true enable_depth:=fals
 ```bash
 source /opt/ros/jazzy/setup.bash
 source install/setup.bash
-ros2 launch alicia_m_calibration hand_eye_calibration.launch.py \
-  aruco_dict:=DICT_4X4_50 marker_id:=0 marker_size:=0.0765
+ros2 launch alicia_m_calibration calibrate.launch.py mode:=eye_in_hand
 ```
+
+固定外部相机（eye-to-hand）使用：
+
+```bash
+ros2 launch alicia_m_calibration calibrate.launch.py mode:=eye_to_hand
+```
+
+两种模式的相机、ArUco 和采样参数分别位于
+`config/eye_in_hand.yaml` 与 `config/eye_to_hand.yaml`。
 
 标定结果保存到：
 
@@ -116,8 +124,9 @@ alicia_m_calibration/config/hand_eye_calibration_result.yaml
 验证结果：
 
 ```bash
-ros2 launch alicia_m_calibration verify_calibration.launch.py \
-  calibration_file:="$PWD/alicia_m_calibration/config/hand_eye_calibration_result.yaml"
+ros2 launch alicia_m_calibration verify.launch.py \
+  mode:=eye_in_hand \
+  result:="$PWD/alicia_m_calibration/config/hand_eye_calibration_result.yaml"
 
 ros2 run tf2_ros tf2_echo base_link aruco_marker_frame
 ```

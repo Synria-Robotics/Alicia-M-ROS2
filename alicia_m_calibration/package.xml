@@ -8,18 +8,13 @@
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
-  <buildtool_depend>ament_cmake_python</buildtool_depend>
-
   <depend>rclpy</depend>
   <depend>sensor_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>tf2_ros</depend>
-  <depend>tf2_geometry_msgs</depend>
   <depend>cv_bridge</depend>
-  <depend>image_transport</depend>
   <depend>control_msgs</depend>
   <depend>trajectory_msgs</depend>
-  <depend>std_msgs</depend>
   <depend>moveit_msgs</depend>
 
   <!-- RealSense D405 ROS driver used by the calibration launch workflow. -->
