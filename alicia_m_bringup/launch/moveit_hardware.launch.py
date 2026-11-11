@@ -28,6 +28,67 @@ def load_yaml(package_name, file_path):
         return yaml.safe_load(f)
 
 
+def planning_pipeline_configuration():
+    """Return the MoveIt pipeline schema used by the active ROS distro."""
+    common = {
+        'default_planning_pipeline': 'ompl',
+        'planning_pipelines': ['ompl', 'pilz_industrial_motion_planner'],
+    }
+    if os.environ.get('ROS_DISTRO') == 'humble':
+        common.update({
+            'ompl': {
+                'planning_plugin': 'ompl_interface/OMPLPlanner',
+                'request_adapters':
+                    'default_planner_request_adapters/AddTimeOptimalParameterization '
+                    'default_planner_request_adapters/ResolveConstraintFrames '
+                    'default_planner_request_adapters/FixWorkspaceBounds '
+                    'default_planner_request_adapters/FixStartStateBounds '
+                    'default_planner_request_adapters/FixStartStateCollision '
+                    'default_planner_request_adapters/FixStartStatePathConstraints',
+                'start_state_max_bounds_error': 0.1,
+            },
+            'pilz_industrial_motion_planner': {
+                'planning_plugin':
+                    'pilz_industrial_motion_planner/CommandPlanner',
+                'request_adapters': '',
+            },
+        })
+        return common
+    common.update({
+        'ompl': {
+            'planning_plugins': ['ompl_interface/OMPLPlanner'],
+            'request_adapters': [
+                'default_planning_request_adapters/ResolveConstraintFrames',
+                'default_planning_request_adapters/ValidateWorkspaceBounds',
+                'default_planning_request_adapters/CheckStartStateBounds',
+                'default_planning_request_adapters/CheckStartStateCollision',
+            ],
+            'response_adapters': [
+                'default_planning_response_adapters/AddTimeOptimalParameterization',
+                'default_planning_response_adapters/ValidateSolution',
+                'default_planning_response_adapters/DisplayMotionPath',
+            ],
+            'start_state_max_bounds_error': 0.1,
+        },
+        'pilz_industrial_motion_planner': {
+            'planning_plugins': [
+                'pilz_industrial_motion_planner/CommandPlanner'],
+            'default_planner_config': 'PTP',
+            'request_adapters': [
+                'default_planning_request_adapters/ResolveConstraintFrames',
+                'default_planning_request_adapters/ValidateWorkspaceBounds',
+                'default_planning_request_adapters/CheckStartStateBounds',
+                'default_planning_request_adapters/CheckStartStateCollision',
+            ],
+            'response_adapters': [
+                'default_planning_response_adapters/ValidateSolution',
+                'default_planning_response_adapters/DisplayMotionPath',
+            ],
+        },
+    })
+    return common
+
+
 def _print_launch_config(context):
     port = LaunchConfiguration('serial_port').perform(context)
     mode = LaunchConfiguration('control_mode').perform(context)
@@ -125,39 +186,7 @@ def generate_launch_description():
     robot_description_planning = {
         'robot_description_planning': joint_limits_yaml
     }
-    planning_pipeline_config = {
-        'default_planning_pipeline': 'ompl',
-        'planning_pipelines': ['ompl', 'pilz_industrial_motion_planner'],
-        'ompl': {
-            'planning_plugins': ['ompl_interface/OMPLPlanner'],
-            'request_adapters': [
-                'default_planning_request_adapters/ResolveConstraintFrames',
-                'default_planning_request_adapters/ValidateWorkspaceBounds',
-                'default_planning_request_adapters/CheckStartStateBounds',
-                'default_planning_request_adapters/CheckStartStateCollision',
-            ],
-            'response_adapters': [
-                'default_planning_response_adapters/AddTimeOptimalParameterization',
-                'default_planning_response_adapters/ValidateSolution',
-                'default_planning_response_adapters/DisplayMotionPath',
-            ],
-            'start_state_max_bounds_error': 0.1,
-        },
-        'pilz_industrial_motion_planner': {
-            'planning_plugins': ['pilz_industrial_motion_planner/CommandPlanner'],
-            'default_planner_config': 'PTP',
-            'request_adapters': [
-                'default_planning_request_adapters/ResolveConstraintFrames',
-                'default_planning_request_adapters/ValidateWorkspaceBounds',
-                'default_planning_request_adapters/CheckStartStateBounds',
-                'default_planning_request_adapters/CheckStartStateCollision',
-            ],
-            'response_adapters': [
-                'default_planning_response_adapters/ValidateSolution',
-                'default_planning_response_adapters/DisplayMotionPath',
-            ],
-        },
-    }
+    planning_pipeline_config = planning_pipeline_configuration()
 
     moveit_controllers_yaml = load_yaml(
         moveit_config_pkg, 'config/moveit_controllers.yaml')
