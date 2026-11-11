@@ -106,6 +106,10 @@ bool SerialPort::write(const uint8_t* data, size_t len)
 
   // 等待数据发送完成
   tcdrain(fd_);
+
+  // Alicia-M 固件要求相邻串口写入至少间隔 1 ms。ros2_control 每周期先
+  // 查询再下发控制帧，如果二者背靠背到达，固件可能报 CRC 错并忽略控制帧。
+  usleep(1000);
   return true;
 }
 

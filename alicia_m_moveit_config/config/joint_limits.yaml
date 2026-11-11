@@ -10,41 +10,49 @@ default_acceleration_scaling_factor: 0.1
 joint_limits:
   joint1:
     has_velocity_limits: true
-    max_velocity: 10.0
-    has_acceleration_limits: false
-    max_acceleration: 0.0
+    max_velocity: 1.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0
   joint2:
+    # Allow a small encoder-zero tolerance above the nominal URDF limit.
+    has_position_limits: true
+    min_position: -3.14
+    max_position: 0.05
     has_velocity_limits: true
-    max_velocity: 10.0
-    has_acceleration_limits: false
-    max_acceleration: 0.0
+    max_velocity: 1.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0
   joint3:
+    # The physical arm reports about +0.012 rad when visually at zero.
+    has_position_limits: true
+    min_position: -3.14
+    max_position: 0.05
     has_velocity_limits: true
-    max_velocity: 10.0
-    has_acceleration_limits: false
-    max_acceleration: 0.0
+    max_velocity: 1.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0
   joint4:
     has_velocity_limits: true
-    max_velocity: 10.0
-    has_acceleration_limits: false
-    max_acceleration: 0.0
+    max_velocity: 1.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0
   joint5:
     has_velocity_limits: true
-    max_velocity: 10.0
-    has_acceleration_limits: false
-    max_acceleration: 0.0
+    max_velocity: 1.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0
   joint6:
     has_velocity_limits: true
-    max_velocity: 10.0
-    has_acceleration_limits: false
-    max_acceleration: 0.0
+    max_velocity: 1.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0
   left_finger:
     has_velocity_limits: true
-    max_velocity: 10.0
-    has_acceleration_limits: false
-    max_acceleration: 0.0
+    max_velocity: 1.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0
   right_finger:
     has_velocity_limits: true
-    max_velocity: 10.0
-    has_acceleration_limits: false
-    max_acceleration: 0.0
+    max_velocity: 1.0
+    has_acceleration_limits: true
+    max_acceleration: 1.0

@@ -72,24 +72,44 @@ def generate_launch_description():
     joint_limits_yaml = load_yaml(moveit_config_pkg, 'config/joint_limits.yaml')
     pilz_cartesian_limits_yaml = load_yaml(
         moveit_config_pkg, 'config/pilz_cartesian_limits.yaml')
-
+    joint_limits_yaml.update(pilz_cartesian_limits_yaml)
+    robot_description_kinematics = {
+        'robot_description_kinematics': kinematics_yaml
+    }
+    robot_description_planning = {
+        'robot_description_planning': joint_limits_yaml
+    }
     planning_pipeline_config = {
         'default_planning_pipeline': 'ompl',
         'planning_pipelines': ['ompl', 'pilz_industrial_motion_planner'],
         'ompl': {
-            'planning_plugin': 'ompl_interface/OMPLPlanner',
-            'request_adapters':
-                'default_planner_request_adapters/AddTimeOptimalParameterization '
-                'default_planner_request_adapters/ResolveConstraintFrames '
-                'default_planner_request_adapters/FixWorkspaceBounds '
-                'default_planner_request_adapters/FixStartStateBounds '
-                'default_planner_request_adapters/FixStartStateCollision '
-                'default_planner_request_adapters/FixStartStatePathConstraints',
+            'planning_plugins': ['ompl_interface/OMPLPlanner'],
+            'request_adapters': [
+                'default_planning_request_adapters/ResolveConstraintFrames',
+                'default_planning_request_adapters/ValidateWorkspaceBounds',
+                'default_planning_request_adapters/CheckStartStateBounds',
+                'default_planning_request_adapters/CheckStartStateCollision',
+            ],
+            'response_adapters': [
+                'default_planning_response_adapters/AddTimeOptimalParameterization',
+                'default_planning_response_adapters/ValidateSolution',
+                'default_planning_response_adapters/DisplayMotionPath',
+            ],
             'start_state_max_bounds_error': 0.1,
         },
         'pilz_industrial_motion_planner': {
-            'planning_plugin': 'pilz_industrial_motion_planner/CommandPlanner',
-            'request_adapters': '',
+            'planning_plugins': ['pilz_industrial_motion_planner/CommandPlanner'],
+            'default_planner_config': 'PTP',
+            'request_adapters': [
+                'default_planning_request_adapters/ResolveConstraintFrames',
+                'default_planning_request_adapters/ValidateWorkspaceBounds',
+                'default_planning_request_adapters/CheckStartStateBounds',
+                'default_planning_request_adapters/CheckStartStateCollision',
+            ],
+            'response_adapters': [
+                'default_planning_response_adapters/ValidateSolution',
+                'default_planning_response_adapters/DisplayMotionPath',
+            ],
         },
     }
 
@@ -148,13 +168,12 @@ def generate_launch_description():
         parameters=[
             robot_description,
             robot_description_semantic,
-            kinematics_yaml,
+            robot_description_kinematics,
             planning_pipeline_config,
             trajectory_execution,
             moveit_controllers_yaml,
             planning_scene_monitor_parameters,
-            joint_limits_yaml,
-            pilz_cartesian_limits_yaml,
+            robot_description_planning,
         ],
     )
 
@@ -168,9 +187,9 @@ def generate_launch_description():
         parameters=[
             robot_description,
             robot_description_semantic,
-            kinematics_yaml,
+            robot_description_kinematics,
             planning_pipeline_config,
-            joint_limits_yaml,
+            robot_description_planning,
         ],
         output='log',
         condition=IfCondition(use_rviz),
