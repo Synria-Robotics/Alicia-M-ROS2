@@ -65,6 +65,12 @@ class ArucoTracker:
             else cv2.aruco.DetectorParameters()
         )
         self.params.minMarkerDistanceRate = 0.03
+        # Hand-eye translation is very sensitive to marker corner noise.
+        # Refine detected corners before estimating the planar square pose.
+        self.params.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
+        self.params.cornerRefinementWinSize = 5
+        self.params.cornerRefinementMaxIterations = 50
+        self.params.cornerRefinementMinAccuracy = 0.01
         self.new_api = (
             hasattr(cv2.aruco, 'ArucoDetector')
             and tuple(map(int, cv2.__version__.split('.')[:2])) >= (4, 7)
@@ -111,11 +117,17 @@ class ArucoTracker:
                 object_points = np.array([
                     [-half, half, 0], [half, half, 0],
                     [half, -half, 0], [-half, -half, 0],
-                ], dtype=np.float32)
+                ], dtype=np.float64)
+                image_points = np.asarray(
+                    corners[int(matches[0])][0], dtype=np.float64)
                 ok, rvec, tvec = cv2.solvePnP(
-                    object_points, corners[int(matches[0])][0],
-                    camera_matrix, dist_coeffs)
+                    object_points, image_points,
+                    camera_matrix, dist_coeffs,
+                    flags=cv2.SOLVEPNP_IPPE_SQUARE)
                 if ok:
+                    rvec, tvec = cv2.solvePnPRefineLM(
+                        object_points, image_points, camera_matrix,
+                        dist_coeffs, rvec, tvec)
                     result.rvec = rvec.reshape(3)
                     result.tvec = tvec.reshape(3)
         self.last = result
@@ -159,6 +171,9 @@ def solve(samples, mode, requested_method):
     """Run OpenCV methods and select the requested valid solution."""
     if len(samples) < 3:
         raise ValueError('at least three samples are required')
+    if requested_method not in METHODS:
+        raise ValueError(
+            f'calibration method must be one of: {", ".join(METHODS)}')
     mounts = [sample[0] for sample in samples]
     targets = [sample[1] for sample in samples]
     grippers = ([np.linalg.inv(pose) for pose in mounts]
@@ -200,14 +215,10 @@ def solve(samples, mode, requested_method):
             results[name] = item
         except cv2.error:
             continue
-    if not results:
-        raise RuntimeError('all calibration methods failed')
-    if requested_method == 'auto':
-        requested_method = min(
-            results,
-            key=lambda name: results[name]['quality']['translation_rmse_m'])
-    method = requested_method if requested_method in results else next(iter(results))
-    return method, results[method], results
+    if requested_method not in results:
+        raise RuntimeError(
+            f'requested calibration method {requested_method!r} failed')
+    return requested_method, results[requested_method], results
 
 
 def package_config(filename):
@@ -227,7 +238,7 @@ def save_result(filename, *, mode, pose, samples, method, dictionary,
     euler = rotation.as_euler('xyz', degrees=True)
     if mode == 'eye_in_hand':
         key, parent, child = (
-            'hand_eye_calibration', 'tool0', 'camera_color_optical_frame')
+            'hand_eye_calibration', 'tool0', camera_frame)
     else:
         key, parent, child = (
             'eye_to_hand_calibration', 'base_link', camera_frame)

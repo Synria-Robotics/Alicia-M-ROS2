@@ -77,14 +77,14 @@ ls -l /dev/ttyACM*
 source /opt/ros/jazzy/setup.bash
 source install/setup.bash
 ros2 launch alicia_m_bringup moveit_hardware.launch.py \
-  serial_port:=/dev/ttyACM1 default_speed:=0.3
+  serial_port:=/dev/ttyACM0 default_speed:=0.3
 ```
 
 其他启动方式：
 
 ```bash
 # 只启动硬件控制
-ros2 launch alicia_m_bringup hardware.launch.py serial_port:=/dev/ttyACM1
+ros2 launch alicia_m_bringup hardware.launch.py serial_port:=/dev/ttyACM0
 
 # 使用 mock hardware 启动 MoveIt 仿真
 ros2 launch alicia_m_bringup moveit_sim.launch.py
@@ -99,7 +99,7 @@ ros2 launch alicia_m_bringup moveit_sim.launch.py
 
 ```bash
 ros2 launch alicia_m_bringup moveit_hardware.launch.py \
-  serial_port:=/dev/ttyACM3 control_mode:=pv
+  serial_port:=/dev/ttyACM0 control_mode:=pv
 ```
 
 启动固定的 D405；eye-to-hand 使用相机名称 `cam1`：
@@ -113,18 +113,32 @@ ros2 launch realsense2_camera rs_launch.py \
 
 ```bash
 # 相机安装在末端
-ros2 launch alicia_m_calibration calibrate.launch.py mode:=eye_in_hand
+ros2 launch alicia_m_calibration calibrate.launch.py \
+  mode:=eye_in_hand camera_name:=cam1 calibration_method:=daniilidis
 
 # 相机固定在机械臂外部
-ros2 launch alicia_m_calibration calibrate.launch.py mode:=eye_to_hand
+ros2 launch alicia_m_calibration calibrate.launch.py \
+  mode:=eye_to_hand camera_name:=cam1 calibration_method:=park
 ```
+
+两个模式都只配置一个六关节起始姿态，程序会根据 `min_samples` 自动生成
+单关节与组合扰动姿态，并预留检测失败后的补采姿态。可按实际安装覆盖起始姿态：
+
+```bash
+ros2 launch alicia_m_calibration calibrate.launch.py \
+  mode:=eye_in_hand camera_name:=cam1 min_samples:=15 \
+  calibration_method:=daniilidis \
+  'reference_pose:=[0.0,-1.09,-0.87,0.0,-0.77,0.0]'
+```
+
+高级用法可通过 `pose_amplitudes:=[...]` 调整六个关节相对起始姿态的最大扰动。
 
 Eye-to-hand 应使用具有充分旋转变化、且 marker 始终完整位于画面内的机器人姿态。
 标定程序会等待关节实际到达目标后再采样，并输出各求解方法的平移与旋转残差。
 
 ### 在 MoveIt 中验证 eye-to-hand
 
-以下命令一次启动 `/dev/ttyACM3` PV 硬件、MoveIt、RViz、D405 `cam1` 和验证节点：
+以下命令一次启动 `/dev/ttyACM0` PV 硬件、MoveIt、RViz、D405 `cam1` 和验证节点：
 
 ```bash
 ros2 launch alicia_m_calibration verify_calibration.launch.py

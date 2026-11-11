@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 """Unified Alicia-M eye-in-hand and eye-to-hand calibration."""
 
 import time
 
 from calibration_common import (
-    ArucoTracker, save_result, solve, transform, transform_from_msg)
+    METHODS, ArucoTracker, save_result, solve, transform, transform_from_msg)
 from control_msgs.action import FollowJointTrajectory, GripperCommand
 from cv_bridge import CvBridge
 from moveit_msgs.action import ExecuteTrajectory
@@ -21,52 +21,58 @@ from tf2_ros import Buffer, TransformListener
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 JOINTS = [f'joint{index}' for index in range(1, 7)]
-EYE_IN_HAND_POSES = [
-    [0.00, -1.09, -0.87, 0.00, -0.77, 0.00],
-    [-0.12, -1.09, -0.87, 0.00, -0.77, 0.00],
-    [0.12, -1.09, -0.87, 0.00, -0.77, 0.00],
-    [-0.20, -1.09, -0.87, 0.00, -0.77, 0.00],
-    [0.00, -1.09, -0.87, 0.00, -0.77, 0.40],
-    [0.00, -1.09, -0.87, 0.00, -0.77, -0.40],
-    [0.00, -1.09, -0.87, 0.00, -0.77, 0.80],
-    [0.00, -1.09, -0.87, 0.00, -0.65, 0.00],
-    [0.00, -1.09, -0.87, 0.00, -0.90, 0.00],
-    [0.00, -1.09, -0.87, 0.00, -0.55, 0.00],
-    [0.00, -1.09, -0.87, 0.25, -0.77, 0.00],
-    [0.00, -1.09, -0.87, -0.25, -0.77, 0.00],
-    [0.00, -1.09, -0.87, 0.40, -0.77, 0.00],
-    [0.15, -1.09, -0.87, 0.00, -0.77, 0.50],
-    [-0.15, -1.09, -0.87, 0.00, -0.77, -0.50],
-    [0.10, -1.09, -0.87, 0.00, -0.77, -0.60],
-    [0.00, -1.09, -0.87, 0.20, -0.70, 0.30],
-    [0.00, -1.09, -0.87, -0.20, -0.85, -0.30],
-    [0.00, -1.09, -0.87, 0.15, -0.60, 0.50],
-    [-0.10, -1.09, -0.87, -0.15, -0.70, -0.40],
-]
+DEFAULT_REFERENCE_POSES = {
+    'eye_in_hand': [0.00, -1.09, -0.87, 0.00, -0.77, 0.00],
+    'eye_to_hand': [0.70, -1.40, -0.34, 0.15, 0.99, -0.11],
+}
+
+# Maximum safe offset from the start pose for each joint.  Zero keeps a joint
+# fixed.  These are motion envelopes, not a fixed list of calibration poses.
+POSE_AMPLITUDES = {
+    'eye_in_hand': [0.16, 0.00, 0.00, 0.24, 0.13, 0.50],
+    'eye_to_hand': [0.15, 0.12, 0.06, 0.10, 0.10, 0.35],
+}
 
 
-def eye_to_hand_poses():
-    """Generate poses for the single robot connected by serial port."""
-    # Keep the tool-mounted marker fully inside the fixed D405 image.  The old
-    # pose put its black border against the top-left image boundary, so ArUco
-    # could not see the required white quiet zone.
-    reference = [0.70, -1.40, -0.34, 0.15, 0.99, -0.11]
+def generate_calibration_poses(start, amplitudes, samples):
+    """Generate diverse joint targets around one user-provided start pose."""
+    start = np.asarray(start, dtype=float)
+    amplitudes = np.asarray(amplitudes, dtype=float)
+    if start.shape != (6,) or amplitudes.shape != (6,):
+        raise ValueError('start pose and amplitudes must contain six joints')
+    active = np.flatnonzero(amplitudes).tolist()
+    if len(active) < 2:
+        raise ValueError('at least two joints need non-zero pose amplitudes')
 
-    def pose(*offsets):
-        offsets += (0.0,) * (6 - len(offsets))
-        return [value + offset for value, offset in zip(reference, offsets)]
+    # Generate extra candidates so missed ArUco detections do not force a
+    # complete restart. Collection still stops at the requested sample count.
+    candidate_count = max(int(samples) + 8, (int(samples) * 3 + 1) // 2)
+    poses = [start.tolist()]
 
-    return [
-        pose(), pose(.08), pose(-.08), pose(.15), pose(-.15),
-        pose(0, .06), pose(0, -.06), pose(0, .12),
-        pose(0, 0, .06), pose(0, 0, -.06),
-        pose(0, 0, 0, .10), pose(0, 0, 0, -.10),
-        pose(0, 0, 0, 0, -.10), pose(0, 0, 0, 0, .10),
-        pose(0, 0, 0, 0, 0, .20), pose(0, 0, 0, 0, 0, -.20),
-        pose(0, 0, 0, 0, 0, .35), pose(.08, .06), pose(-.08, -.06),
-        pose(.08, 0, 0, 0, -.08, .20),
-        pose(-.08, 0, 0, 0, .08, -.20),
-    ]
+    # Single-axis motions establish strong, independently observable rotation.
+    for scale in (0.5, -0.5, 1.0, -1.0):
+        for axis in active:
+            pose = start.copy()
+            pose[axis] += amplitudes[axis] * scale
+            poses.append(pose.tolist())
+            if len(poses) >= candidate_count:
+                return poses
+
+    # Add automatically generated coupled motions only when more candidates
+    # are needed. Half-range offsets keep the target near the start view.
+    pairs = [(a, b) for index, a in enumerate(active)
+             for b in active[index + 1:]]
+    patterns = ((0.5, 0.5), (0.5, -0.5),
+                (-0.5, 0.5), (-0.5, -0.5))
+    for first_scale, second_scale in patterns:
+        for first, second in pairs:
+            pose = start.copy()
+            pose[first] += amplitudes[first] * first_scale
+            pose[second] += amplitudes[second] * second_scale
+            poses.append(pose.tolist())
+            if len(poses) >= candidate_count:
+                return poses
+    return poses
 
 
 class Calibration(Node):
@@ -89,14 +95,20 @@ class Calibration(Node):
             'base_link': 'base_link',
             'tool_link': 'tool0',
             'robot_model': 'alicia_m_v1_2_follower',
+            'reference_pose': DEFAULT_REFERENCE_POSES[self.mode],
+            'pose_amplitudes': POSE_AMPLITUDES[self.mode],
             'samples': 15 if eye_in_hand else 18,
-            'method': 'horaud' if eye_in_hand else 'park',
+            'method': '',
             'output': ('hand_eye_calibration_result.yaml' if eye_in_hand
                        else 'eye_to_hand_calibration_result.yaml'),
         }
         for name, value in defaults.items():
             self.declare_parameter(name, value)
             setattr(self, name, self.get_parameter(name).value)
+        if self.method not in METHODS:
+            choices = ', '.join(METHODS)
+            raise ValueError(
+                f'method must be explicitly set to one of: {choices}')
 
         self.bridge = CvBridge()
         self.camera_matrix = None
@@ -109,11 +121,15 @@ class Calibration(Node):
         self.data = []
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
-        qos = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT,
-                         history=HistoryPolicy.KEEP_LAST, depth=1)
-        self.create_subscription(Image, self.camera_topic, self.on_image, qos)
+        self._resolve_camera_topics()
+        image_qos = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT,
+                               history=HistoryPolicy.KEEP_LAST, depth=1)
         self.create_subscription(
-            CameraInfo, self.camera_info_topic, self.on_camera_info, 10)
+            Image, self.camera_topic, self.on_image,
+            self._publisher_qos(self.camera_topic, image_qos))
+        self.create_subscription(
+            CameraInfo, self.camera_info_topic, self.on_camera_info,
+            self._publisher_qos(self.camera_info_topic, 10))
         self.create_subscription(JointState, '/joint_states',
                                  self.on_joint_state, 10)
 
@@ -124,10 +140,60 @@ class Calibration(Node):
         self.plan = self.create_client(GetMotionPlan, '/plan_kinematic_path')
         self.gripper = ActionClient(
             self, GripperCommand, '/gripper_controller/gripper_cmd')
-        self.poses = (EYE_IN_HAND_POSES if eye_in_hand
-                      else eye_to_hand_poses())
+        self.poses = generate_calibration_poses(
+            self.reference_pose, self.pose_amplitudes, self.samples)
         self.get_logger().info(
-            f'{self.mode}, marker={self.marker_id}, size={self.marker_size} m')
+            'Calibration parameters: '
+            f'mode={self.mode}, aruco_dict={self.aruco_dict}, '
+            f'marker_id={self.marker_id}, marker_size={self.marker_size} m, '
+            f'camera_topic={self.camera_topic}, '
+            f'camera_info_topic={self.camera_info_topic}, '
+            f'base_link={self.base_link}, tool_link={self.tool_link}, '
+            f'robot_model={self.robot_model}, samples={self.samples}, '
+            f'method={self.method}, '
+            f'reference_pose={np.round(self.reference_pose, 3)}, '
+            f'candidate_poses={len(self.poses)}, output={self.output}')
+
+    def _topic_publishers(self, topic):
+        return self.get_publishers_info_by_topic(topic)
+
+    def _publisher_qos(self, topic, default):
+        publishers = self._topic_publishers(topic)
+        if not publishers:
+            return default
+        profile = publishers[0].qos_profile
+        if profile.history == HistoryPolicy.UNKNOWN:
+            profile.history = HistoryPolicy.KEEP_LAST
+        if profile.depth in (0, None):
+            profile.depth = 10
+        return profile
+
+    def _resolve_camera_topics(self):
+        """Use the configured camera, or the one color camera that is publishing."""
+        deadline = time.monotonic() + 3.0
+        while time.monotonic() < deadline:
+            if (self._topic_publishers(self.camera_info_topic)
+                    and self._topic_publishers(self.camera_topic)):
+                return
+            rclpy.spin_once(self, timeout_sec=0.1)
+        if self._topic_publishers(self.camera_info_topic):
+            return
+        candidates = []
+        for name, types in self.get_topic_names_and_types():
+            if (name.endswith('/color/camera_info')
+                    and 'sensor_msgs/msg/CameraInfo' in types
+                    and self._topic_publishers(name)):
+                candidates.append(name)
+        if len(candidates) != 1:
+            return
+        info = candidates[0]
+        image = info[:-len('camera_info')] + 'image_raw'
+        if not self._topic_publishers(image):
+            return
+        self.get_logger().warning(
+            f'No publisher on {self.camera_info_topic}; using {info}')
+        self.camera_info_topic = info
+        self.camera_topic = image
 
     def on_camera_info(self, message):
         if self.camera_matrix is None:
@@ -173,14 +239,26 @@ class Calibration(Node):
         return future.result() if future.done() else None
 
     def services_ready(self):
-        if not (self.arm.wait_for_server(timeout_sec=10)
-                and self.execute.wait_for_server(timeout_sec=10)
-                and self.plan.wait_for_service(timeout_sec=10)):
+        missing = []
+        if not self.arm.wait_for_server(timeout_sec=10):
+            missing.append('/arm_controller/follow_joint_trajectory')
+        if not self.execute.wait_for_server(timeout_sec=10):
+            missing.append('/execute_trajectory')
+        if not self.plan.wait_for_service(timeout_sec=10):
+            missing.append('/plan_kinematic_path')
+        if missing:
+            self.get_logger().error(
+                'MoveIt interfaces are not available: ' + ', '.join(missing))
             return False
         start = time.monotonic()
         while self.camera_matrix is None and time.monotonic() - start < 30:
             rclpy.spin_once(self, timeout_sec=.1)
-        return self.camera_matrix is not None
+        if self.camera_matrix is None:
+            self.get_logger().error(
+                f'No CameraInfo on {self.camera_info_topic}. '
+                f'Expected images on {self.camera_topic}.')
+            return False
+        return True
 
     def plan_to(self, positions):
         request = GetMotionPlan.Request()
@@ -265,6 +343,7 @@ class Calibration(Node):
             return False
         self.open_gripper()
         if not self.move(self.poses[0]):
+            self.get_logger().error('Failed to reach the first calibration pose')
             return False
         for index, pose in enumerate(self.poses, 1):
             if len(self.data) >= self.samples:
@@ -279,18 +358,32 @@ class Calibration(Node):
             end = time.monotonic() + 5
             while time.monotonic() < end and self.tracker.stable_pose is None:
                 rclpy.spin_once(self, timeout_sec=.05)
-            self.sample()
+            if not self.sample():
+                self.get_logger().warning(
+                    f'Pose {index}: no stable ArUco detection; sample skipped')
         self.move(self.poses[0], 3.)
-        return len(self.data) >= 3
+        if len(self.data) < self.samples:
+            self.get_logger().error(
+                f'Collected only {len(self.data)}/{self.samples} valid samples; '
+                'calibration result was not saved')
+            return False
+        return True
 
     def run(self):
         if not self.collect():
             return False
         method, result, all_results = solve(self.data, self.mode, self.method)
+        calibration_label = ('tool_camera_xyz' if self.mode == 'eye_in_hand'
+                             else 'base_camera_xyz')
+        invariant_label = ('base_marker_xyz' if self.mode == 'eye_in_hand'
+                           else 'tool_marker_xyz')
         for name, item in all_results.items():
             quality = item.get('quality', {})
             self.get_logger().info(
-                f'{name}: t={np.round(item["pose"][:3, 3], 4)}, '
+                f'{name}: {calibration_label}='
+                f'{np.round(item["pose"][:3, 3], 4)}, '
+                f'{invariant_label}='
+                f'{np.round(item["invariant_pose"][:3, 3], 4)}, '
                 f't_rmse={quality.get("translation_rmse_m", float("nan")):.6f} m, '
                 f'r_rmse={quality.get("rotation_rmse_deg", float("nan")):.3f} deg')
         self.get_logger().info(f'Selected calibration method: {method}')

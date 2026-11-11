@@ -9,6 +9,7 @@
     base_link: base_link
     tool_link: tool0
     robot_model: alicia_m_v1_2_follower
+    reference_pose: [0.0, -1.09, -0.87, 0.0, -0.77, 0.0]
+    pose_amplitudes: [0.16, 0.0, 0.0, 0.24, 0.13, 0.50]
     samples: 18
-    method: auto
     output: hand_eye_calibration_result.yaml
