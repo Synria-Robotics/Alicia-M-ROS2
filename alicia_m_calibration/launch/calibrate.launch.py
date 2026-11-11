@@ -74,7 +74,9 @@ def generate_launch_description():
             description='Required OpenCV hand-eye calibration method'),
         DeclareLaunchArgument(
             'camera_name', default_value='',
-            description='RealSense camera_name; derives color image topics'),
+            description=(
+                'Optional RealSense camera_name; omit to use configured topics '
+                'or auto-discover the only publishing color camera')),
         DeclareLaunchArgument(
             'camera_namespace', default_value='/camera',
             description='Namespace containing the named RealSense camera'),

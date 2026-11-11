@@ -373,10 +373,10 @@ class Calibration(Node):
         if not self.collect():
             return False
         method, result, all_results = solve(self.data, self.mode, self.method)
-        calibration_label = ('tool_camera_xyz' if self.mode == 'eye_in_hand'
-                             else 'base_camera_xyz')
-        invariant_label = ('base_marker_xyz' if self.mode == 'eye_in_hand'
-                           else 'tool_marker_xyz')
+        calibration_label = ('tool_camera_xyz_m' if self.mode == 'eye_in_hand'
+                             else 'base_camera_xyz_m')
+        invariant_label = ('base_marker_xyz_m' if self.mode == 'eye_in_hand'
+                           else 'tool_marker_xyz_m')
         for name, item in all_results.items():
             quality = item.get('quality', {})
             self.get_logger().info(
