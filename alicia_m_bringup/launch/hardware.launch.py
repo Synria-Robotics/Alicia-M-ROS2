@@ -3,7 +3,7 @@ hardware.launch.py - Hardware only (ros2_control + controllers, no MoveIt2)
 
 Usage:
   ros2 launch alicia_m_bringup hardware.launch.py
-  ros2 launch alicia_m_bringup hardware.launch.py serial_port:=/dev/ttyACM1
+  ros2 launch alicia_m_bringup hardware.launch.py serial_port:=/dev/ttyACM0
   ros2 launch alicia_m_bringup hardware.launch.py control_mode:=mit mit_kp:=30.0 mit_kd:=1.5
 """
 

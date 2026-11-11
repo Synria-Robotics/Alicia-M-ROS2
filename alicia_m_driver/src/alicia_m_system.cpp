@@ -155,18 +155,27 @@ hardware_interface::CallbackReturn AliciaHardwareInterface::on_activate(
   // 否则例如固件处于 MIT 而本驱动发送 PV 时，命令会被静默忽略。
   // 顺序与 Alicia-M SDK 一致：失能 -> 切模式 -> 使能 -> 首条控制指令。
   auto disable_frame = build_enable_frame(false, control_aim_);
-  serial_.write(disable_frame);
+  if (!serial_.write(disable_frame)) {
+    RCLCPP_ERROR(kLogger, "Failed to disable motors before switching control mode");
+    return hardware_interface::CallbackReturn::ERROR;
+  }
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   const uint32_t requested_mode = control_mode_ == "mit" ? MODE_MIT : MODE_PV;
   auto mode_frame = build_mode_switch_frame(requested_mode, control_aim_);
   serial_.flush_input();
   rx_accum_.clear();
-  serial_.write(mode_frame);
+  if (!serial_.write(mode_frame)) {
+    RCLCPP_ERROR(kLogger, "Failed to send %s mode switch", control_mode_.c_str());
+    return hardware_interface::CallbackReturn::ERROR;
+  }
   std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
   auto enable_frame = build_enable_frame(true, control_aim_);
-  serial_.write(enable_frame);
+  if (!serial_.write(enable_frame)) {
+    RCLCPP_ERROR(kLogger, "Failed to enable motors in %s mode", control_mode_.c_str());
+    return hardware_interface::CallbackReturn::ERROR;
+  }
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
   if (control_mode_ == "mit") {
@@ -187,7 +196,8 @@ hardware_interface::CallbackReturn AliciaHardwareInterface::on_activate(
   } else {
     double speeds[NUM_JOINTS];
     for (size_t i = 0; i < NUM_JOINTS; ++i) {
-      speeds[i] = default_speed_;
+      const double error = hw_commands_[i] - hw_positions_[i];
+      speeds[i] = std::copysign(default_speed_, std::abs(error) < 1e-6 ? 1.0 : error);
     }
     uint16_t grip_speed_hw = speed_to_hw(1.0);
     auto frame = build_pv_control_frame(

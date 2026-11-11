@@ -9,6 +9,7 @@
     base_link: base_link
     tool_link: tool0
     robot_model: alicia_m_v1_2_follower
+    reference_pose: [0.70, -1.40, -0.34, 0.15, 0.99, -0.11]
+    pose_amplitudes: [0.15, 0.12, 0.06, 0.10, 0.10, 0.35]
     samples: 18
-    method: park
     output: eye_to_hand_calibration_result.yaml

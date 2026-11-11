@@ -1,5 +1,7 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 """Publish a calibration result and fresh ArUco observations to MoveIt."""
+
+import time
 
 from calibration_common import (
     ArucoTracker, load_result, transform_from_msg)
@@ -69,14 +71,45 @@ class Verification(Node):
             CollisionObject,
             self.get_parameter('collision_topic').value, 10)
         self.timer = self.create_timer(.2, self.publish_calibration)
+        self.camera_topic = self.get_parameter('camera_topic').value
+        self.camera_info_topic = self.get_parameter('camera_info_topic').value
+        self._resolve_camera_topics()
         qos = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT,
                          history=HistoryPolicy.KEEP_LAST, depth=1)
         self.create_subscription(
-            Image, self.get_parameter('camera_topic').value,
+            Image, self.camera_topic,
             self.on_image, qos)
         self.create_subscription(
-            CameraInfo, self.get_parameter('camera_info_topic').value,
+            CameraInfo, self.camera_info_topic,
             self.on_camera_info, 10)
+
+    def _topic_publishers(self, topic):
+        return self.get_publishers_info_by_topic(topic)
+
+    def _resolve_camera_topics(self):
+        """Use the configured camera, or the one color camera that is publishing."""
+        deadline = time.monotonic() + 3.0
+        while time.monotonic() < deadline:
+            if (self._topic_publishers(self.camera_info_topic)
+                    and self._topic_publishers(self.camera_topic)):
+                return
+            rclpy.spin_once(self, timeout_sec=0.1)
+        candidates = []
+        for name, types in self.get_topic_names_and_types():
+            if (name.endswith('/color/camera_info')
+                    and 'sensor_msgs/msg/CameraInfo' in types
+                    and self._topic_publishers(name)):
+                candidates.append(name)
+        if len(candidates) != 1:
+            return
+        info = candidates[0]
+        image = info[:-len('camera_info')] + 'image_raw'
+        if not self._topic_publishers(image):
+            return
+        self.get_logger().warning(
+            f'No publisher on {self.camera_info_topic}; using {info}')
+        self.camera_info_topic = info
+        self.camera_topic = image
 
     def on_camera_info(self, message):
         if self.camera_matrix is None:
@@ -137,9 +170,17 @@ class Verification(Node):
             calibrated_to_current = transform_from_msg(relative)
         if self.record['type'] == 'eye_to_hand':
             return self.parent_optical @ calibrated_to_current
-        base_to_tool = self.buffer.lookup_transform(
-            self.base_link, self.tool_link, observation_time,
-            timeout=Duration(seconds=.1))
+        try:
+            base_to_tool = self.buffer.lookup_transform(
+                self.base_link, self.tool_link, observation_time,
+                timeout=Duration(seconds=.1))
+        except Exception:
+            # Some hardware publishes joint TF slightly behind the camera
+            # timestamp.  Verification should still work with the freshest
+            # robot pose instead of dropping every image.
+            base_to_tool = self.buffer.lookup_transform(
+                self.base_link, self.tool_link, rclpy.time.Time(),
+                timeout=Duration(seconds=.1))
         return (transform_from_msg(base_to_tool) @ self.parent_optical @
                 calibrated_to_current)
 

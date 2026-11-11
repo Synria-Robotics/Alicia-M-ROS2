@@ -22,6 +22,17 @@ def start(context):
         overrides['marker_size'] = float(marker_size)
     if marker_id:
         overrides['marker_id'] = int(marker_id)
+    camera_name = LaunchConfiguration('camera_name').perform(context).strip('/')
+    camera_namespace = LaunchConfiguration(
+        'camera_namespace').perform(context).rstrip('/')
+    if camera_name:
+        prefix = f'{camera_namespace}/{camera_name}/color'
+        overrides['camera_topic'] = f'{prefix}/image_raw'
+        overrides['camera_info_topic'] = f'{prefix}/camera_info'
+    for argument in ('camera_topic', 'camera_info_topic'):
+        value = LaunchConfiguration(argument).perform(context)
+        if value:
+            overrides[argument] = value
     return [Node(
         package='alicia_m_calibration', executable='verify.py',
         output='screen', parameters=[str(config), overrides])]
@@ -37,5 +48,17 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'marker_id', default_value='',
             description='Override result marker ID'),
+        DeclareLaunchArgument(
+            'camera_name', default_value='',
+            description='RealSense camera_name; derives color image topics'),
+        DeclareLaunchArgument(
+            'camera_namespace', default_value='/camera',
+            description='Namespace containing the named RealSense camera'),
+        DeclareLaunchArgument(
+            'camera_topic', default_value='',
+            description='Explicit image topic; overrides camera_name'),
+        DeclareLaunchArgument(
+            'camera_info_topic', default_value='',
+            description='Explicit CameraInfo topic; overrides camera_name'),
         OpaqueFunction(function=start),
     ])

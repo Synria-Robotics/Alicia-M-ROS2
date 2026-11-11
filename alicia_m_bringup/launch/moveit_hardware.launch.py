@@ -3,7 +3,7 @@ moveit_hardware.launch.py - MoveIt2 + 真实硬件
 
 用法:
   ros2 launch alicia_m_bringup moveit_hardware.launch.py
-  ros2 launch alicia_m_bringup moveit_hardware.launch.py serial_port:=/dev/ttyACM1
+  ros2 launch alicia_m_bringup moveit_hardware.launch.py serial_port:=/dev/ttyACM0
   ros2 launch alicia_m_bringup moveit_hardware.launch.py control_mode:=mit mit_kp:=30.0 mit_kd:=1.5
 """
 

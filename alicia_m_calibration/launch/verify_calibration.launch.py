@@ -46,6 +46,7 @@ def start(context):
             'result': LaunchConfiguration('result'),
             'marker_id': LaunchConfiguration('marker_id'),
             'marker_size': LaunchConfiguration('marker_size'),
+            'camera_name': camera_name,
         })
     return [robot, camera, verifier]
 
@@ -58,7 +59,7 @@ def generate_launch_description():
         DeclareLaunchArgument('result', default_value=''),
         DeclareLaunchArgument('marker_id', default_value='0'),
         DeclareLaunchArgument('marker_size', default_value='0.0765'),
-        DeclareLaunchArgument('serial_port', default_value='/dev/ttyACM3'),
+        DeclareLaunchArgument('serial_port', default_value='/dev/ttyACM0'),
         DeclareLaunchArgument('control_mode', default_value='pv'),
         DeclareLaunchArgument('use_rviz', default_value='true'),
         DeclareLaunchArgument(

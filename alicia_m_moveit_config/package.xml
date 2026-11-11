@@ -4,7 +4,7 @@
   <name>alicia_m_moveit_config</name>
   <version>0.3.0</version>
   <description>
-     MoveIt configuration for the Alicia-M v1.2 follower.
+     MoveIt configuration for the Alicia-M v1.2 follower (hardware version 102).
   </description>
   <maintainer email="support@synriarobotics.ai">Synria Robotics</maintainer>
 
@@ -42,7 +42,6 @@
   <exec_depend>rviz_common</exec_depend>
   <exec_depend>rviz_default_plugins</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
-  <exec_depend>warehouse_ros_mongo</exec_depend>
   <exec_depend>xacro</exec_depend>
 
 
